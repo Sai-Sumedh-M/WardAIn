@@ -9,7 +9,8 @@ from gateway.identity import IdentityError, IdentityService
 from gateway.chaos import ChaosEngine
 from gateway.killswitch import ACTIONS, KillSwitch
 from gateway.llm import LLMBackend
-from gateway.monitor import CircuitBreaker
+from gateway.monitor import CircuitBreaker, Monitor
+from gateway.recovery import Recovery
 from gateway.pipeline import decide_approval, expire_approval, handle_call
 from gateway.policy import PolicyEngine
 from gateway.store import GatewayStore
@@ -31,6 +32,8 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     st.circuit = CircuitBreaker(st.store, st.policy.cfg["circuit"])
     st.tools = ToolsClient(tools_http)
     st.llm = LLMBackend(settings, st.store)
+    st.recovery = Recovery(st.store, st.tools)
+    st.monitor = Monitor(st.store, st.killswitch, st.recovery, st.policy)
 
     def admin_ok(token: str | None) -> bool:
         return token == settings.ADMIN_TOKEN
@@ -81,6 +84,12 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
                          round(req.amount, 2), req.reason)
         st.store.add_event("run_started", req.run_id, detail={"scenario": req.scenario})
         return {"ok": True}
+
+    @app.get("/recovery/{run_id}")
+    def recovery(run_id: str, x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        return st.recovery.status(run_id)
 
     @app.post("/control/halt_all")
     def halt_all(x_admin_token: str | None = Header(None)):

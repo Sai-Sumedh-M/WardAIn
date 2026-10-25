@@ -1,4 +1,4 @@
-"""The enforcement pipeline (Phase 3: steps 0-13, 15-16, 18; deviation check and monitor come in Phase 4)."""
+"""The enforcement pipeline (steps 0-18)."""
 import json
 import time
 import uuid
@@ -10,6 +10,7 @@ from gateway import guards
 from gateway.identity import IdentityError
 from gateway.llm import LLMError
 from gateway.policy import PolicyBlock
+from gateway.recovery import undo_for
 from gateway.tools_client import ToolsUnavailable
 
 REAL_TOOLS = {"get_customer", "get_payments", "issue_refund", "send_email", "update_record"}
@@ -131,6 +132,13 @@ def _execute(state, call: ToolCall, role: str, on: bool, t0: float) -> tuple[int
     store.add_event("checkpoint_saved", call.run_id, call.step_id, call.agent_id, call.tool)
     if side_effect:
         store.add_event("side_effect", call.run_id, call.step_id, call.agent_id, call.tool)
+        undo = undo_for(call.tool, result) if on else None
+        if undo:
+            store.add_compensation(call.run_id, call.step_id, call.tool, undo[0], undo[1])
+    if on:
+        state.recovery.check_deviation({"step_id": call.step_id, "run_id": call.run_id,
+                                        "agent_id": call.agent_id, "role": role, "tool": call.tool,
+                                        "args": call.args})
     response = {"ok": True, "step_id": call.step_id, "result": result}
     if on and call.idempotency_key:
         store.put_idempotency(call.idempotency_key, call.run_id, call.step_id, 200, response)
@@ -181,7 +189,15 @@ def _request_approval(state, call: ToolCall) -> tuple[int, dict]:
 
 
 def handle_call(state, authorization: str | None, body: dict) -> tuple[int, dict]:
-    """Process one /call request through the enforcement chain."""
+    """Process one /call request, then run the monitor (step 17) for authenticated calls."""
+    code, resp = _handle(state, authorization, body)
+    if code != 401 and code != 400:
+        state.monitor.after_call(ToolCall(**body), None)
+    return code, resp
+
+
+def _handle(state, authorization: str | None, body: dict) -> tuple[int, dict]:
+    """Steps 0-16 and 18 of the enforcement chain."""
     try:
         call = ToolCall(**body)
     except ValidationError:

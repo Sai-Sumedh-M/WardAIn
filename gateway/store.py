@@ -161,6 +161,51 @@ class GatewayStore:
                  "args": json.loads(r["args_json"]), "result": json.loads(r["result_json"]),
                  "parent_step_ids": json.loads(r["parent_step_ids_json"])} for r in rows]
 
+    def set_step_plan(self, step_id: str, plan_index: int | None, deviation: int) -> None:
+        """Set the matched plan index / deviation flag of a step."""
+        self.db.execute("UPDATE steps SET plan_index=?, deviation=? WHERE step_id=?",
+                        (plan_index, deviation, step_id))
+
+    def mark_tainted(self, step_ids: list[str]) -> None:
+        """Mark steps as tainted."""
+        for sid in step_ids:
+            self.db.execute("UPDATE steps SET tainted=1 WHERE step_id=?", (sid,))
+
+    def set_run_status(self, run_id: str, status: str) -> None:
+        """Set the run status without touching ended_at."""
+        self.db.execute("UPDATE runs SET status=? WHERE run_id=?", (status, run_id))
+
+    # ---- compensations ----
+    def add_compensation(self, run_id: str, step_id: str, tool: str, undo_tool: str, undo_args: dict) -> None:
+        """Record how to undo a side-effect step."""
+        self.db.execute("INSERT INTO compensations(run_id,step_id,tool,undo_tool,undo_args_json,applied,"
+                        "applied_at) VALUES(?,?,?,?,?,0,NULL)",
+                        (run_id, step_id, tool, undo_tool, json.dumps(undo_args)))
+
+    def pending_compensations(self, run_id: str, step_ids: list[str]) -> list[dict]:
+        """Unapplied compensations for the given steps, newest first."""
+        rows = self.db.query("SELECT * FROM compensations WHERE run_id=? AND applied=0 ORDER BY id DESC",
+                             (run_id,))
+        return [{**r, "undo_args": json.loads(r["undo_args_json"])} for r in rows if r["step_id"] in step_ids]
+
+    def mark_compensation_applied(self, comp_id: int) -> None:
+        """Flag a compensation as applied."""
+        self.db.execute("UPDATE compensations SET applied=1, applied_at=? WHERE id=?", (time.time(), comp_id))
+
+    # ---- event queries ----
+    def count_events(self, agent_id: str, types: list[str], since_ts: float) -> int:
+        """Count events of the given types for an agent at or after since_ts."""
+        marks = ",".join("?" * len(types))
+        row = self.db.query_one(f"SELECT COUNT(*) AS n FROM events WHERE agent_id=? AND ts>=? "
+                                f"AND type IN ({marks})", (agent_id, since_ts, *types))
+        return row["n"]
+
+    def last_event_ts(self, agent_id: str, type: str) -> float | None:
+        """Timestamp of the agent's latest event of a type."""
+        row = self.db.query_one("SELECT MAX(ts) AS ts FROM events WHERE agent_id=? AND type=?",
+                                (agent_id, type))
+        return row["ts"] if row else None
+
     # ---- idempotency ----
     def get_idempotency(self, key: str) -> dict | None:
         """Stored (status_code, response) for a key, or None."""

@@ -4,6 +4,19 @@ import httpx
 from common.envelope import RunRequest
 
 
+class AdminError(Exception):
+    """An admin API call returned a non-2xx status."""
+
+
+def _json(resp: httpx.Response):
+    """Return parsed JSON or raise AdminError showing the status code and body."""
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError:
+        raise AdminError(f"{resp.request.method} {resp.request.url.path} -> {resp.status_code}: {resp.text}")
+    return resp.json()
+
+
 class AdminClient:
     def __init__(self, gateway_url: str, admin_token: str, http: httpx.Client | None = None):
         """Create a client with the admin header preset."""
@@ -12,11 +25,11 @@ class AdminClient:
 
     def _get(self, path: str, params: dict | None = None):
         """GET and return parsed JSON."""
-        return self.http.get(path, headers=self.headers, params=params).json()
+        return _json(self.http.get(path, headers=self.headers, params=params))
 
     def _post(self, path: str, body: dict | None = None):
         """POST and return parsed JSON."""
-        return self.http.post(path, headers=self.headers, json=body or {}).json()
+        return _json(self.http.post(path, headers=self.headers, json=body or {}))
 
     def reset(self, mode: str, scenario: dict, approval_mode: str, monitor_enabled: bool) -> dict:
         """Reset gateway and tools state."""

@@ -7,6 +7,11 @@ if [ ! -f .venv/bin/activate ]; then
 fi
 source .venv/bin/activate
 mkdir -p data results
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
 export GATEWAY_URL=http://localhost:8000
 export TOOLS_URL=http://localhost:8001
 export GATEWAY_DB_PATH=data/gateway.db

@@ -5,6 +5,10 @@ services:
     env_file: .env
     volumes: [tools-data:/data]
     networks: [toolnet]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 2s
+      retries: 15
   gateway:
     build: .
     command: uvicorn gateway.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1
@@ -12,14 +16,20 @@ services:
     volumes: [gateway-data:/data]
     ports: ["8000:8000"]
     networks: [default, agentnet, toolnet]
-    depends_on: [tools]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 2s
+      retries: 15
+    depends_on:
+      tools: {condition: service_healthy}
   agents:
     build: .
     command: sleep infinity
     env_file: .env
     volumes: ["./results:/app/results"]
     networks: [agentnet]
-    depends_on: [gateway]
+    depends_on:
+      gateway: {condition: service_healthy}
   dashboard:
     build: .
     command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
@@ -27,7 +37,8 @@ services:
     volumes: ["./results:/app/results"]
     ports: ["8501:8501"]
     networks: [default, agentnet]
-    depends_on: [gateway]
+    depends_on:
+      gateway: {condition: service_healthy}
 volumes:
   tools-data:
   gateway-data:

@@ -85,6 +85,7 @@ wardain/
 ├── .gitignore                   # .venv/, .env, data/, results/, __pycache__/, .pytest_cache/, .DS_Store
 ├── scripts/
 │   ├── dev_local.sh             # run tools + gateway locally without docker
+│   ├── local_env.sh             # `source` in each new terminal: venv + .env + local URLs
 │   └── run_all.sh               # docker compose exec agents python -m scenarios.runner --scenario all --mode both
 ├── common/
 │   ├── __init__.py
@@ -169,7 +170,7 @@ pytest==8.3.4
 NVIDIA_API_KEY=
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
 MODEL_NAME=nvidia/nemotron-3.5-lightning-30b-a3b
-NVIDIA_EXTRA_BODY_JSON={"chat_template_kwargs": {"enable_thinking": false}}
+NVIDIA_EXTRA_BODY_JSON='{"chat_template_kwargs": {"enable_thinking": false}}'
 LLM_MODE=mock
 ADMIN_TOKEN=change-me-admin-token
 GATEWAY_URL=http://gateway:8000
@@ -209,6 +210,10 @@ services:
     env_file: .env
     volumes: [tools-data:/data]
     networks: [toolnet]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 2s
+      retries: 15
   gateway:
     build: .
     command: uvicorn gateway.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1
@@ -216,14 +221,20 @@ services:
     volumes: [gateway-data:/data]
     ports: ["8000:8000"]
     networks: [default, agentnet, toolnet]
-    depends_on: [tools]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 2s
+      retries: 15
+    depends_on:
+      tools: {condition: service_healthy}
   agents:
     build: .
     command: sleep infinity
     env_file: .env
     volumes: ["./results:/app/results"]
     networks: [agentnet]
-    depends_on: [gateway]
+    depends_on:
+      gateway: {condition: service_healthy}
   dashboard:
     build: .
     command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
@@ -231,7 +242,8 @@ services:
     volumes: ["./results:/app/results"]
     ports: ["8501:8501"]
     networks: [default, agentnet]
-    depends_on: [gateway]
+    depends_on:
+      gateway: {condition: service_healthy}
 volumes:
   tools-data:
   gateway-data:
@@ -246,10 +258,16 @@ on `toolnet`, reachable ONLY from the gateway. This is how bypass is made imposs
 
 ### scripts/dev_local.sh
 Starts with `source .venv/bin/activate` (exit with an error message if `.venv` is missing).
-Creates `data/` and `results/`, exports the local overrides from section 4, starts
+Creates `data/` and `results/`, runs `set -a; source .env; set +a` BEFORE applying the local overrides
+from section 4 (so gateway and runner share ADMIN_TOKEN), exports those overrides, starts
 `uvicorn tools.mock_tools:default_app --factory --port 8001 --workers 1 &` and
 `uvicorn gateway.app:create_app --factory --port 8000 --workers 1 &`, waits for `GET /health` on both, prints
 "WardAIn local stack ready", and `wait`s. (Local mode has no network isolation; that is fine for dev.)
+
+### scripts/local_env.sh
+Meant to be `source`d (not executed) in each new terminal: cd to the repo, `source .venv/bin/activate`,
+`set -a; source .env; set +a`, `export GATEWAY_URL=http://localhost:8000 TOOLS_URL=http://localhost:8001
+LLM_MODE=${LLM_MODE_OVERRIDE:-mock}`, then `echo "Local env ready"`.
 
 ---------------------------------------------------------------------------------------------------
 ## 6. Databases (exact schemas)
@@ -480,7 +498,7 @@ Admin endpoints require header `X-Admin-Token: <ADMIN_TOKEN>` (else 401 `{"error
 | `POST /admin/reset` | admin | body `{"mode": "on"|"off", "scenario": {...}, "approval_mode": str, "monitor_enabled": bool}` → section 18 |
 | `GET /admin/config` | admin | all config keys |
 | `POST /admin/config` | admin | body partial config dict, merges |
-| `GET /admin/events` | admin | query `run_id` (optional), `since_ts` (float, default 0), `limit` (default 500); ordered by ts asc |
+| `GET /admin/events` | admin | query `run_id` (optional), `since_ts` (float, default 0), `limit` (default 500); ordered by ts asc; when `since_ts` is not given, returns the MOST RECENT `limit` events (still ascending) |
 | `GET /admin/agents` | admin | all agent rows |
 | `GET /admin/runs` | admin | last 100 runs, newest first |
 | `GET /admin/steps/{run_id}` | admin | steps for run ordered by ts |
@@ -706,8 +724,8 @@ Find the lowest-index plan entry that (a) has `role == step.role`, (b) has `tool
 - `LLM_MODE=mock` → `mock_llm.respond(role, task, messages)`; model `"mock"`.
 - `LLM_MODE=nvidia` → `POST {NVIDIA_BASE_URL}/chat/completions` with header
   `Authorization: Bearer {NVIDIA_API_KEY}`, JSON body = `{"model": MODEL_NAME, "messages": messages,
-  "temperature": 0, "max_tokens": 512}` merged with `json.loads(NVIDIA_EXTRA_BODY_JSON)` (if the env var
-  is non-empty), timeout 60 s.
+  "temperature": 0, "max_tokens": 512}` merged with `json.loads(NVIDIA_EXTRA_BODY_JSON.strip().strip("'"))` (if the env var
+  is non-empty; the value is single-quoted in `.env`), timeout 60 s.
   **Why:** the default model `nvidia/nemotron-3.5-lightning-30b-a3b` is a reasoning model. Without
   `"chat_template_kwargs": {"enable_thinking": false}` it spends all tokens in `reasoning_content` and
   returns `content: null` (verified with curl). With it, it returns a clean `content` and
@@ -761,7 +779,9 @@ class AgentClient:
 `reset(mode, scenario, approval_mode, monitor_enabled)`, `create_run(req)`, `recovery(run_id)`,
 `control(agent_id, action)`, `halt_all()`, `resume_all()`, `events(run_id=None, since_ts=0, limit=500)`,
 `agents()`, `runs()`, `steps(run_id)`, `tool_state()`, `outage(seconds)`, `approvals()`,
-`decide(approval_id, decision)`, `get_config()`, `set_config(partial)`. Each returns parsed JSON.
+`decide(approval_id, decision)`, `get_config()`, `set_config(partial)`. Each returns parsed JSON. Every
+method calls `response.raise_for_status()` and raises a clear error containing the status code and body
+(never returns error JSON as data).
 
 ### agents/workflow.py
 ```python
@@ -959,6 +979,7 @@ target_balance_delta: 49.99, run_status: completed`.
 `python -m scenarios.runner --scenario <name|all> --mode <on|off|both> [--runs N] [--step-delay S]
 [--engine plain|langgraph]` (default `plain`; `langgraph` imports `agents.langgraph_workflow` lazily and
 uses `run_workflow_langgraph` instead of `run_workflow`; Phase 5b).
+Before the first run, the runner waits up to 30 s for `GET /health` on the gateway.
 For each scenario and mode, for i in range(runs):
 1. `admin.reset(mode=mode, scenario={"name": name, "chaos": chaos, "seed": 42 + i},
    approval_mode="auto_reject", monitor_enabled=...)`. Gateway reset: delete all rows in `agents,
@@ -1099,7 +1120,7 @@ mock_llm, pipeline with steps 0, 9, 11 (OFF behaviour), 13, 18 only (behave as O
 for now); agents/client.py (no retries/approval yet), agents/admin.py, agents/workflow.py (normal
 behaviour only); scenarios/runner.py supporting `normal_run`; tests/conftest.py + test_workflow.py.
 DoD: `pytest -q` passes; `python -m scenarios.runner --scenario normal_run --mode off --runs 1`
-completes against the local stack; `docker compose up -d --build` starts all 4 services and
+completes against the local stack; `docker compose up -d --build --wait` starts all 4 services and
 `docker compose exec agents python -m scenarios.runner --scenario normal_run --mode off --runs 1`
 completes.
 

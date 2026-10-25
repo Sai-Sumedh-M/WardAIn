@@ -45,7 +45,7 @@ class LLMBackend:
         body = {"model": s.MODEL_NAME, "messages": messages, "temperature": 0, "max_tokens": 512}
         try:
             if s.NVIDIA_EXTRA_BODY_JSON:
-                body.update(json.loads(s.NVIDIA_EXTRA_BODY_JSON))
+                body.update(json.loads(s.NVIDIA_EXTRA_BODY_JSON.strip().strip("'")))
             resp = httpx.post(f"{s.NVIDIA_BASE_URL}/chat/completions", json=body, timeout=60,
                               headers={"Authorization": f"Bearer {s.NVIDIA_API_KEY}"})
             if resp.status_code != 200:

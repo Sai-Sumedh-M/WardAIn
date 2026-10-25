@@ -4,6 +4,7 @@ import json
 import time
 from pathlib import Path
 
+import httpx
 import yaml
 
 from agents.admin import AdminClient
@@ -106,6 +107,20 @@ def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_del
             "events": admin.events(run_id=run_id)}
 
 
+def wait_for_gateway(url: str, timeout: float = 30.0) -> None:
+    """Block until GET /health answers, up to timeout seconds."""
+    deadline = time.time() + timeout
+    while True:
+        try:
+            if httpx.get(f"{url}/health", timeout=2).status_code == 200:
+                return
+        except httpx.HTTPError:
+            pass
+        if time.time() > deadline:
+            raise SystemExit(f"gateway not healthy at {url} after {timeout:.0f}s")
+        time.sleep(0.5)
+
+
 def main() -> None:
     """CLI entry point."""
     ap = argparse.ArgumentParser()
@@ -116,6 +131,7 @@ def main() -> None:
     ap.add_argument("--engine", choices=["plain", "langgraph"], default="plain")
     args = ap.parse_args()
     settings = load_settings()
+    wait_for_gateway(settings.GATEWAY_URL)
     admin = AdminClient(settings.GATEWAY_URL, settings.ADMIN_TOKEN)
     names = all_scenarios() if args.scenario == "all" else [args.scenario]
     modes = ["off", "on"] if args.mode == "both" else [args.mode]

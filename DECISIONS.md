@@ -7,3 +7,4 @@
 - scenarios/attacks.py: RogueClient takes an optional httpx client (for tests) and exposes mint_jwt/send helpers
 - scripts/dev_local.sh: sources .env (set -a) before the local URL/DB overrides so gateway and runner share ADMIN_TOKEN
 - agents/admin.py: AdminClient raises AdminError (method, path, status code, body) on non-2xx instead of returning error JSON
+- gateway/store.py: get_events returns the most recent <limit> events (ascending) when since_ts is absent or 0; with since_ts > 0 it returns the oldest events after it, so polling works

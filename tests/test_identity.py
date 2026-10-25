@@ -78,3 +78,16 @@ def test_revoked_token(gateway_app, make_agent):
     gateway_app.state.identity.revoke_agent(agent.agent_id)
     res = agent.call("get_customer", CUSTOMER, "r1")
     assert res.status_code == 401 and res.body["reason"] == "token_revoked"
+
+
+def test_events_without_since_ts_returns_most_recent(admin, make_agent):
+    agent = make_agent("retriever")
+    for _ in range(3):
+        agent.call("get_customer", CUSTOMER, "r1")
+    everything = admin.events(limit=500)
+    latest = admin.events(limit=4)
+    assert latest == everything[-4:]
+    assert [e["ts"] for e in latest] == sorted(e["ts"] for e in latest)
+    # with since_ts the oldest events after that point come first
+    after = admin.events(since_ts=everything[0]["ts"], limit=2)
+    assert after == everything[1:3]

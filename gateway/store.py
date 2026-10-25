@@ -69,14 +69,15 @@ class GatewayStore:
         return event_id
 
     def get_events(self, run_id: str | None = None, since_ts: float = 0.0, limit: int = 500) -> list[dict]:
-        """Events ordered by ts ascending, detail decoded."""
+        """Events ascending by ts: from since_ts onward, or the most recent `limit` if since_ts is 0."""
         sql, params = "SELECT * FROM events WHERE ts > ?", [since_ts]
         if run_id:
             sql += " AND run_id=?"
             params.append(run_id)
-        sql += " ORDER BY ts ASC, rowid ASC LIMIT ?"
-        params.append(limit)
-        rows = self.db.query(sql, tuple(params))
+        order = "ASC" if since_ts else "DESC"
+        rows = self.db.query(sql + f" ORDER BY ts {order}, rowid {order} LIMIT ?", tuple(params + [limit]))
+        if not since_ts:
+            rows.reverse()
         return [{**{k: v for k, v in r.items() if k != "detail_json"},
                  "detail": json.loads(r["detail_json"])} for r in rows]
 

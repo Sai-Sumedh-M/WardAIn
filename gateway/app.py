@@ -6,8 +6,10 @@ from fastapi.responses import JSONResponse
 from common.config import Settings, load_settings
 from common.envelope import RunRequest
 from gateway.identity import IdentityError, IdentityService
+from gateway.chaos import ChaosEngine
 from gateway.killswitch import ACTIONS, KillSwitch
 from gateway.llm import LLMBackend
+from gateway.monitor import CircuitBreaker
 from gateway.pipeline import decide_approval, expire_approval, handle_call
 from gateway.policy import PolicyEngine
 from gateway.store import GatewayStore
@@ -25,6 +27,8 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     st.identity = IdentityService(st.store, settings.GATEWAY_KEY_PATH)
     st.policy = PolicyEngine(st.store)
     st.killswitch = KillSwitch(st.store, st.identity, st.policy)
+    st.chaos = ChaosEngine(st.store)
+    st.circuit = CircuitBreaker(st.store, st.policy.cfg["circuit"])
     st.tools = ToolsClient(tools_http)
     st.llm = LLMBackend(settings, st.store)
 
@@ -132,6 +136,8 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
             if key in body:
                 st.store.set_config(key, body[key])
         st.store.set_config("global_halt", False)
+        st.chaos.reset()
+        st.circuit.reset()
         st.tools.reset()
         return {"ok": True}
 
@@ -163,6 +169,14 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     @app.get("/admin/steps/{run_id}")
     def steps(run_id: str, x_admin_token: str | None = Header(None)):
         return st.store.get_steps(run_id) if admin_ok(x_admin_token) else denied()
+
+    @app.post("/admin/tools/outage")
+    def outage(body: dict = Body(...), x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        st.tools.outage(float(body["seconds"]))
+        st.store.add_event("outage_started", detail={"seconds": float(body["seconds"])})
+        return {"ok": True}
 
     @app.get("/admin/tool_state")
     def tool_state(x_admin_token: str | None = Header(None)):

@@ -1,4 +1,4 @@
-"""The enforcement pipeline (Phase 2: steps 0-4, 8, 9, 11, 13, 15, 18)."""
+"""The enforcement pipeline (Phase 3: steps 0-13, 15-16, 18; deviation check and monitor come in Phase 4)."""
 import json
 import time
 import uuid
@@ -6,6 +6,7 @@ import uuid
 from pydantic import ValidationError
 
 from common.envelope import PlanEntry, ToolCall
+from gateway import guards
 from gateway.identity import IdentityError
 from gateway.llm import LLMError
 from gateway.policy import PolicyBlock
@@ -23,11 +24,25 @@ def _error(state, call: ToolCall, code: int, reason: str, event_type: str = "too
     return code, {"ok": False, "error": reason}
 
 
-def _exec_pseudo(state, call: ToolCall, role: str) -> tuple[int, dict | str]:
+def _sanitized(state, call: ToolCall, kind_field: str) -> None:
+    """Emit the injection_sanitized and anomaly_detected events for one sanitised field."""
+    state.store.add_event("injection_sanitized", call.run_id, call.step_id, call.agent_id, call.tool,
+                          {"field": kind_field})
+    state.store.add_event("anomaly_detected", call.run_id, call.step_id, call.agent_id, call.tool,
+                          {"kind": "prompt_injection", "field": kind_field})
+
+
+def _exec_pseudo(state, call: ToolCall, role: str, on: bool) -> tuple[int, dict | str]:
     """Run llm / submit_plan / report_result; return (status, raw_text or error body)."""
     if call.tool == "llm":
+        args = call.args
+        if on:
+            messages, n = guards.sanitize_messages(args["messages"])
+            if n:
+                _sanitized(state, call, "messages")
+            args = {**args, "messages": messages}
         try:
-            return 200, json.dumps({"result": state.llm.complete(role, call.args)})
+            return 200, json.dumps({"result": state.llm.complete(role, args)})
         except LLMError as e:
             return 502, str(e)
     if call.tool == "submit_plan":
@@ -46,13 +61,15 @@ def _exec_pseudo(state, call: ToolCall, role: str) -> tuple[int, dict | str]:
     return 200, json.dumps({"result": {"recorded": True}})
 
 
-def _exec_real(state, call: ToolCall) -> tuple[int, str, tuple[int, dict] | None]:
+def _exec_real(state, call: ToolCall, on: bool) -> tuple[int, str, tuple[int, dict] | None]:
     """Forward to the tools service; return (status, raw_text, error_response_or_None)."""
     try:
         status, text = state.tools.call(call.tool, call.args)
     except ToolsUnavailable:
-        return 0, "", _error(state, call, 503, "tool_unavailable")
-    if status == 503:
+        status, text = 0, ""
+    if on:
+        state.circuit.record(call.tool, 0 < status < 500, call.run_id, call.agent_id)
+    if status in (0, 503):
         return status, text, _error(state, call, 503, "tool_unavailable")
     if status != 200:
         return status, text, _error(state, call, 502, "tool_error")
@@ -66,24 +83,29 @@ def _block(state, call: ToolCall, code: int, reason: str, event_type: str) -> tu
 
 
 def _execute(state, call: ToolCall, role: str, on: bool, t0: float) -> tuple[int, dict]:
-    """Steps 8-18: re-check kill-switch, execute, parse, record, store idempotency."""
+    """Steps 6-18: chaos, circuit, kill-switch re-check, execute, parse, sanitise, record, idempotency."""
     store = state.store
+    if state.chaos.pre(call):
+        return _error(state, call, 502, "tool_error")
+    if on and call.tool in REAL_TOOLS and state.circuit.is_open(call.tool):
+        return _error(state, call, 503, "circuit_open")
     if on and call.tool in SIDE_EFFECT_TOOLS:
         reason = state.killswitch.check(store.get_agent(call.agent_id), call.tool)
         if reason:
             return _block(state, call, 403, reason, "agent_not_active")
     if call.tool in PSEUDO_TOOLS:
-        status, raw = _exec_pseudo(state, call, role)
+        status, raw = _exec_pseudo(state, call, role, on)
         if status == 403:
             return _block(state, call, 403, raw, "guard_blocked")
         if status != 200:
             return _error(state, call, 502, "llm_error")
     elif call.tool in REAL_TOOLS:
-        status, raw, err = _exec_real(state, call)
+        status, raw, err = _exec_real(state, call, on)
         if err:
             return err
     else:
         return _error(state, call, 502, "tool_error")
+    raw, timeout_after_commit = state.chaos.post(call, raw)
 
     try:
         result = json.loads(raw)["result"]
@@ -93,6 +115,11 @@ def _execute(state, call: ToolCall, role: str, on: bool, t0: float) -> tuple[int
         if on:
             return _error(state, call, 502, "invalid_tool_output")
         result = {"raw": raw}
+
+    if on and call.tool in ("get_customer", "get_payments"):
+        result, fields = guards.sanitize_output(result)
+        for f in fields:
+            _sanitized(state, call, f)
 
     side_effect = 1 if call.tool in SIDE_EFFECT_TOOLS else 0
     store.add_step({"step_id": call.step_id, "run_id": call.run_id, "agent_id": call.agent_id, "role": role,
@@ -107,6 +134,8 @@ def _execute(state, call: ToolCall, role: str, on: bool, t0: float) -> tuple[int
     response = {"ok": True, "step_id": call.step_id, "result": result}
     if on and call.idempotency_key:
         store.put_idempotency(call.idempotency_key, call.run_id, call.step_id, 200, response)
+    if timeout_after_commit:
+        return _error(state, call, 504, "timeout")
     return 200, response
 
 
@@ -181,4 +210,10 @@ def handle_call(state, authorization: str | None, body: dict) -> tuple[int, dict
             return _block(state, call, 403, blocked.reason, "policy_blocked")
         if state.policy.requires_approval(call):
             return _request_approval(state, call)
+        reason = (guards.check_args(call.tool, call.args)
+                  or guards.check_loop(store, state.policy.cfg["limits"]["loop_threshold"], call.run_id,
+                                       call.tool, call.args)
+                  or guards.check_pii(call.tool, call.args))
+        if reason:
+            return _block(state, call, 403, reason, "guard_blocked")
     return _execute(state, call, agent["role"] if agent else "unknown", on, t0)

@@ -1,0 +1,10 @@
+name: runaway_loop
+description: The executor loops issuing refunds until the operator halts everything.
+runs: 5
+request: {customer_id: C001, amount: 49.99, reason: "duplicate charge"}
+chaos: []
+behaviour: {retriever_rogue: false, executor_mode: loop}
+attack: {type: halt_during_loop, params: {after_successes: 2, max_calls: 20, interval_ms: 50}}
+monitor_enabled: false
+expect:
+  payments_after_halt: 0

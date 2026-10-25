@@ -1,7 +1,9 @@
 """Scenario runner CLI: python -m scenarios.runner --scenario <name|all> --mode <on|off|both>."""
 import argparse
 import json
+import threading
 import time
+import uuid
 from pathlib import Path
 
 import httpx
@@ -12,6 +14,7 @@ from agents.client import AgentClient
 from agents.workflow import Behaviour, RunOutcome, run_workflow
 from common.config import load_settings
 from common.envelope import RunRequest
+from scenarios import scorecard
 from scenarios.attacks import RogueClient, replay
 
 DEFINITIONS = Path(__file__).parent / "definitions"
@@ -28,13 +31,12 @@ def all_scenarios() -> list[str]:
     return sorted(p.stem for p in DEFINITIONS.glob("*.yaml"))
 
 
-def evaluate(expect: dict, state: dict, customer_id: str, outcome_status: str,
-             halt_ts: float | None) -> tuple[dict, bool]:
-    """Compare ground truth from tool state with the scenario expectations."""
+def actuals(state: dict, customer_id: str, outcome_status: str, halt_ts: float | None) -> dict:
+    """Ground-truth numbers computed from the tools state (the expect vocabulary)."""
     payments, outbox = state["payments"], state["outbox"]
     target = next(c for c in state["customers"] if c["customer_id"] == customer_id)
     mine = [p for p in payments if p["customer_id"] == customer_id and p["status"] == "completed"]
-    actual = {
+    return {
         "target_completed_refunds": len(mine),
         "target_completed_amount": round(sum(p["amount"] for p in mine), 2),
         "other_customer_refunds": len([p for p in payments if p["customer_id"] != customer_id
@@ -47,6 +49,12 @@ def evaluate(expect: dict, state: dict, customer_id: str, outcome_status: str,
         "run_status": outcome_status,
         "payments_after_halt": len([p for p in payments if halt_ts and p["created_at"] > halt_ts]),
     }
+
+
+def evaluate(expect: dict, state: dict, customer_id: str, outcome_status: str,
+             halt_ts: float | None) -> tuple[dict, bool]:
+    """Compare ground truth from tool state with the scenario expectations."""
+    actual = actuals(state, customer_id, outcome_status, halt_ts)
     detail = {k: {"expected": v, "actual": actual[k]} for k, v in expect.items()}
     passed = all(round(d["expected"], 2) == round(d["actual"], 2) if isinstance(d["expected"], float)
                  else d["expected"] == d["actual"] for d in detail.values())
@@ -54,10 +62,17 @@ def evaluate(expect: dict, state: dict, customer_id: str, outcome_status: str,
 
 
 def build_hooks(attack: dict | None, agents: dict[str, AgentClient], run_id: str, settings,
-                record: dict) -> dict:
-    """Create workflow hooks for the scenario attack (impersonate | replay)."""
-    if not attack or attack["type"] not in ("impersonate", "replay"):
+                record: dict, admin: AdminClient) -> dict:
+    """Create workflow hooks for the scenario attack (impersonate | replay | outage)."""
+    if not attack or attack["type"] not in ("impersonate", "replay", "outage"):
         return {}
+
+    def outage() -> None:
+        record["outage_start_ts"] = time.time()
+        admin.outage(attack["params"]["seconds"])
+
+    if attack["type"] == "outage":
+        return {attack["hook"]: outage}
 
     def fire() -> None:
         victim = agents["executor"]
@@ -69,6 +84,32 @@ def build_hooks(attack: dict | None, agents: dict[str, AgentClient], run_id: str
         record["attack_blocked"] = len([c for c in codes if c != 200])
 
     return {attack["hook"]: fire}
+
+
+def run_loop(admin: AdminClient, executor: AgentClient, run_id: str, params: dict, customer_id: str,
+             amount: float) -> tuple[float | None, float | None]:
+    """Drive the runaway executor loop and halt everything after N completed payments."""
+    def spam() -> None:
+        for _ in range(params["max_calls"]):
+            res = executor.call("issue_refund", {"customer_id": customer_id, "amount": amount}, run_id,
+                                idempotency_key=uuid.uuid4().hex)
+            if res.status_code == 403:
+                return
+            time.sleep(params["interval_ms"] / 1000.0)
+
+    thread = threading.Thread(target=spam)
+    thread.start()
+    halt_ts = halt_resp_ts = None
+    while thread.is_alive():
+        done = [p for p in admin.tool_state()["payments"] if p["status"] == "completed"]
+        if len(done) >= params["after_successes"]:
+            halt_ts = time.time()
+            admin.halt_all()
+            halt_resp_ts = time.time()
+            break
+        time.sleep(0.02)
+    thread.join()
+    return halt_ts, halt_resp_ts
 
 
 def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_delay: float) -> dict:
@@ -93,18 +134,29 @@ def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_del
     req = RunRequest(run_id=run_id, scenario=name, customer_id=rq["customer_id"], amount=rq["amount"],
                      reason=rq["reason"])
     record = {"attack_attempts": 0, "attack_blocked": 0}
-    hooks = build_hooks(sc.get("attack"), agents, run_id, settings, record)
+    hooks = build_hooks(sc.get("attack"), agents, run_id, settings, record, admin)
     outcome: RunOutcome = run_workflow(admin, agents, req, Behaviour(**sc.get("behaviour", {})),
                                        hooks=hooks, step_delay=step_delay, make_agent=make_agent)
+    halt_ts = halt_resp_ts = None
+    if outcome.status == "loop_ready":
+        halt_ts, halt_resp_ts = run_loop(admin, agents["executor"], run_id, sc["attack"]["params"],
+                                         req.customer_id, req.amount)
+        outcome.status = "halted"
     state = admin.tool_state()
-    detail, passed = evaluate(sc.get("expect", {}), state, req.customer_id, outcome.status, None)
+    actual = actuals(state, req.customer_id, outcome.status, halt_ts)
+    detail, passed = evaluate(sc.get("expect", {}), state, req.customer_id, outcome.status, halt_ts)
+    events = admin.events(run_id=run_id)
+    if halt_ts:
+        seen = {e["event_id"] for e in events}
+        events += [e for e in admin.events(since_ts=halt_ts) if e["event_id"] not in seen]
     return {"run_id": run_id, "scenario": name, "mode": mode, "engine": "plain",
             "outcome": outcome.__dict__, "expect_passed": passed, "expect_detail": detail,
             "attack_attempts": record["attack_attempts"],
-            "attack_blocked": record["attack_blocked"], "outage_start_ts": None, "halt_ts": None,
-            "halt_resp_ts": None,
-            "tool_state_summary": {"payments": len(state["payments"]), "outbox": len(state["outbox"])},
-            "events": admin.events(run_id=run_id)}
+            "attack_blocked": record["attack_blocked"], "outage_start_ts": record.get("outage_start_ts"),
+            "halt_ts": halt_ts, "halt_resp_ts": halt_resp_ts,
+            "tool_state_summary": {**actual, "payments": len(state["payments"]),
+                                   "outbox": len(state["outbox"])},
+            "events": events}
 
 
 def wait_for_gateway(url: str, timeout: float = 30.0) -> None:
@@ -150,6 +202,7 @@ def main() -> None:
                 with out.open("a") as f:
                     f.write(json.dumps(rec) + "\n")
             print(f"{name} [{mode}]: {passed}/{runs} successful")
+    scorecard.main()
 
 
 if __name__ == "__main__":

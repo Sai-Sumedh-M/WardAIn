@@ -1,0 +1,22 @@
+roles:
+  planner: [llm, submit_plan]
+  retriever: [llm, get_customer]
+  executor: [llm, issue_refund, send_email, update_record]
+  auditor: [get_customer, get_payments, report_result]
+system_only_tools: [reverse_refund, recall_email]
+quarantine_allowed_tools: [llm]
+internal_email_domain: company.com
+high_risk:
+  issue_refund_amount_gt: 500
+approval_timeout_seconds: 30
+limits:
+  loop_threshold: 3
+  max_refunds_per_run: 3
+  max_deviations_per_agent: 2
+  block_burst_count: 3
+  block_burst_window_seconds: 30
+circuit:
+  window: 10
+  min_calls: 3
+  error_ratio: 0.5
+  open_seconds: 2.0

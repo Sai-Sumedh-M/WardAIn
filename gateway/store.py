@@ -160,6 +160,57 @@ class GatewayStore:
                  "args": json.loads(r["args_json"]), "result": json.loads(r["result_json"]),
                  "parent_step_ids": json.loads(r["parent_step_ids_json"])} for r in rows]
 
+    # ---- idempotency ----
+    def get_idempotency(self, key: str) -> dict | None:
+        """Stored (status_code, response) for a key, or None."""
+        row = self.db.query_one("SELECT * FROM idempotency WHERE key=?", (key,))
+        return {"status_code": row["status_code"], "response": json.loads(row["response_json"])} if row else None
+
+    def put_idempotency(self, key: str, run_id: str, step_id: str, status_code: int, response: dict) -> None:
+        """Store the response of an executed call."""
+        self.db.execute("INSERT OR REPLACE INTO idempotency VALUES(?,?,?,?,?)",
+                        (key, run_id, step_id, status_code, json.dumps(response)))
+
+    # ---- approvals ----
+    def add_approval(self, approval_id: str, call: dict) -> None:
+        """Insert a pending approval holding the envelope."""
+        self.db.execute("INSERT INTO approvals VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (approval_id, call["run_id"], call["step_id"], call["agent_id"], call["tool"],
+                         json.dumps(call), "pending", None, time.time(), None))
+
+    def _approval(self, row: dict | None) -> dict | None:
+        """Decode JSON columns of an approval row."""
+        if row is None:
+            return None
+        resp = json.loads(row["response_json"]) if row["response_json"] else None
+        return {**{k: v for k, v in row.items() if k not in ("envelope_json", "response_json")},
+                "envelope": json.loads(row["envelope_json"]),
+                "status_code": resp["status_code"] if resp else None,
+                "response": resp["response"] if resp else None}
+
+    def get_approval(self, approval_id: str) -> dict | None:
+        """Return one approval (status_code/response decoded)."""
+        return self._approval(self.db.query_one("SELECT * FROM approvals WHERE approval_id=?", (approval_id,)))
+
+    def pending_approvals(self) -> list[dict]:
+        """All pending approvals, oldest first."""
+        rows = self.db.query("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at")
+        return [self._approval(r) for r in rows]
+
+    def claim_approval(self, approval_id: str, status: str) -> bool:
+        """Atomically move a pending approval to approved|rejected; False if not pending."""
+        with self.db.lock:
+            cur = self.db.conn.execute(
+                "UPDATE approvals SET status=?, decided_at=? WHERE approval_id=? AND status='pending'",
+                (status, time.time(), approval_id))
+            self.db.conn.commit()
+            return cur.rowcount == 1
+
+    def set_approval_response(self, approval_id: str, status_code: int, response: dict) -> None:
+        """Store the final status code and body of a decided approval."""
+        self.db.execute("UPDATE approvals SET response_json=? WHERE approval_id=?",
+                        (json.dumps({"status_code": status_code, "response": response}), approval_id))
+
     # ---- reset ----
     def reset_state(self) -> None:
         """Delete agents, tokens, nonces, idempotency and approvals (events/runs/steps are kept)."""

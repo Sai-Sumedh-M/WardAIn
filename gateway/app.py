@@ -6,8 +6,10 @@ from fastapi.responses import JSONResponse
 from common.config import Settings, load_settings
 from common.envelope import RunRequest
 from gateway.identity import IdentityError, IdentityService
+from gateway.killswitch import ACTIONS, KillSwitch
 from gateway.llm import LLMBackend
-from gateway.pipeline import handle_call
+from gateway.pipeline import decide_approval, expire_approval, handle_call
+from gateway.policy import PolicyEngine
 from gateway.store import GatewayStore
 from gateway.tools_client import ToolsClient
 
@@ -21,6 +23,8 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     st.settings = settings
     st.store = GatewayStore(settings.GATEWAY_DB_PATH)
     st.identity = IdentityService(st.store, settings.GATEWAY_KEY_PATH)
+    st.policy = PolicyEngine(st.store)
+    st.killswitch = KillSwitch(st.store, st.identity, st.policy)
     st.tools = ToolsClient(tools_http)
     st.llm = LLMBackend(settings, st.store)
 
@@ -53,6 +57,18 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
         code, resp = handle_call(st, authorization, body)
         return JSONResponse(resp, status_code=code)
 
+    @app.get("/approvals/{approval_id}")
+    def approval_status(approval_id: str, authorization: str | None = Header(None)):
+        try:
+            st.identity.decode_token(authorization)
+        except IdentityError as e:
+            return JSONResponse({"ok": False, "error": e.reason}, status_code=401)
+        expire_approval(st, approval_id)
+        ap = st.store.get_approval(approval_id)
+        if ap is None:
+            return JSONResponse({"error": "unknown_approval"}, status_code=404)
+        return {"status": ap["status"], "status_code": ap["status_code"], "response": ap["response"]}
+
     @app.post("/runs")
     def create_run(req: RunRequest, x_admin_token: str | None = Header(None)):
         if not admin_ok(x_admin_token):
@@ -60,6 +76,51 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
         st.store.add_run(req.run_id, req.scenario, st.store.get_config("mode"), req.customer_id,
                          round(req.amount, 2), req.reason)
         st.store.add_event("run_started", req.run_id, detail={"scenario": req.scenario})
+        return {"ok": True}
+
+    @app.post("/control/halt_all")
+    def halt_all(x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        st.killswitch.halt_all()
+        return {"ok": True}
+
+    @app.post("/control/resume_all")
+    def resume_all(x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        st.killswitch.resume_all()
+        return {"ok": True}
+
+    @app.post("/control/{agent_id}/{action}")
+    def control(agent_id: str, action: str, x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        if action not in ACTIONS:
+            return JSONResponse({"error": "bad_action"}, status_code=400)
+        if st.store.get_agent(agent_id) is None:
+            return JSONResponse({"error": "unknown_agent"}, status_code=404)
+        st.killswitch.set_status(agent_id, action)
+        return {"ok": True, "agent_id": agent_id, "status": ACTIONS[action][0]}
+
+    @app.get("/admin/approvals")
+    def approvals(x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        for ap in st.store.pending_approvals():
+            expire_approval(st, ap["approval_id"])
+        return st.store.pending_approvals()
+
+    @app.post("/admin/approvals/{approval_id}/{decision}")
+    def decide(approval_id: str, decision: str, x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        if decision not in ("approve", "reject"):
+            return JSONResponse({"error": "bad_decision"}, status_code=400)
+        ap = st.store.get_approval(approval_id)
+        if ap is None or ap["status"] != "pending":
+            return JSONResponse({"error": "not_pending"}, status_code=404)
+        decide_approval(st, approval_id, decision)
         return {"ok": True}
 
     @app.post("/admin/reset")

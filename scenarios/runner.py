@@ -11,6 +11,7 @@ from agents.client import AgentClient
 from agents.workflow import Behaviour, RunOutcome, run_workflow
 from common.config import load_settings
 from common.envelope import RunRequest
+from scenarios.attacks import RogueClient, replay
 
 DEFINITIONS = Path(__file__).parent / "definitions"
 ROLES = ["planner", "retriever", "executor", "auditor"]
@@ -51,6 +52,24 @@ def evaluate(expect: dict, state: dict, customer_id: str, outcome_status: str,
     return detail, passed
 
 
+def build_hooks(attack: dict | None, agents: dict[str, AgentClient], run_id: str, settings,
+                record: dict) -> dict:
+    """Create workflow hooks for the scenario attack (impersonate | replay)."""
+    if not attack or attack["type"] not in ("impersonate", "replay"):
+        return {}
+
+    def fire() -> None:
+        victim = agents["executor"]
+        if attack["type"] == "impersonate":
+            codes = RogueClient(settings.GATEWAY_URL).impersonate(run_id, victim)
+        else:
+            codes = replay(victim, attack["params"]["count"])
+        record["attack_attempts"] = len(codes)
+        record["attack_blocked"] = len([c for c in codes if c != 200])
+
+    return {attack["hook"]: fire}
+
+
 def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_delay: float) -> dict:
     """Run one scenario iteration and return the raw result record."""
     name = sc["name"]
@@ -72,13 +91,16 @@ def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_del
     rq = sc["request"]
     req = RunRequest(run_id=run_id, scenario=name, customer_id=rq["customer_id"], amount=rq["amount"],
                      reason=rq["reason"])
+    record = {"attack_attempts": 0, "attack_blocked": 0}
+    hooks = build_hooks(sc.get("attack"), agents, run_id, settings, record)
     outcome: RunOutcome = run_workflow(admin, agents, req, Behaviour(**sc.get("behaviour", {})),
-                                       step_delay=step_delay, make_agent=make_agent)
+                                       hooks=hooks, step_delay=step_delay, make_agent=make_agent)
     state = admin.tool_state()
     detail, passed = evaluate(sc.get("expect", {}), state, req.customer_id, outcome.status, None)
     return {"run_id": run_id, "scenario": name, "mode": mode, "engine": "plain",
             "outcome": outcome.__dict__, "expect_passed": passed, "expect_detail": detail,
-            "attack_attempts": 0, "attack_blocked": 0, "outage_start_ts": None, "halt_ts": None,
+            "attack_attempts": record["attack_attempts"],
+            "attack_blocked": record["attack_blocked"], "outage_start_ts": None, "halt_ts": None,
             "halt_resp_ts": None,
             "tool_state_summary": {"payments": len(state["payments"]), "outbox": len(state["outbox"])},
             "events": admin.events(run_id=run_id)}

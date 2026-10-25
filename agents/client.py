@@ -9,6 +9,7 @@ from common.crypto import envelope_message, generate_keypair, sign
 from common.envelope import CallResult
 
 SIDE_EFFECT_TOOLS = {"issue_refund", "send_email", "update_record"}
+RETRY_DELAYS = [0.2, 0.4, 0.8, 1.6, 1.6]
 
 
 class AgentClient:
@@ -55,11 +56,32 @@ class AgentClient:
         self.last_request = ("/call", headers, body)
         return self.http.post("/call", headers=headers, content=body)
 
+    def _poll_approval(self, approval_id: str) -> CallResult:
+        """Poll GET /approvals/{id} every 0.2 s (max 35 s) until decided."""
+        deadline = time.time() + 35
+        data: dict = {}
+        while time.time() < deadline:
+            self.ensure_token()
+            data = self.http.get(f"/approvals/{approval_id}",
+                                 headers={"Authorization": f"Bearer {self.token}"}).json()
+            if data.get("status") not in (None, "pending") and data.get("response") is not None:
+                return CallResult(status_code=data["status_code"], body=data["response"])
+            time.sleep(0.2)
+        return CallResult(status_code=202, body={"ok": False, "pending_approval": True,
+                                                 "approval_id": approval_id})
+
     def call(self, tool: str, args: dict, run_id: str, parent_step_ids: list[str] | None = None,
              idempotency_key: str | None = None) -> CallResult:
-        """Call the gateway and return a CallResult."""
+        """Call the gateway (retrying 502/503/504, polling approvals) and return a CallResult."""
         step_id = uuid.uuid4().hex[:12]
         if tool in SIDE_EFFECT_TOOLS:
             idempotency_key = idempotency_key or uuid.uuid4().hex
-        resp = self._attempt(tool, args, run_id, step_id, parent_step_ids or [], idempotency_key)
-        return CallResult(status_code=resp.status_code, body=resp.json())
+        for delay in RETRY_DELAYS + [None]:
+            resp = self._attempt(tool, args, run_id, step_id, parent_step_ids or [], idempotency_key)
+            if resp.status_code not in (502, 503, 504) or delay is None:
+                break
+            time.sleep(delay)
+        body = resp.json()
+        if resp.status_code == 202:
+            return self._poll_approval(body["approval_id"])
+        return CallResult(status_code=resp.status_code, body=body)

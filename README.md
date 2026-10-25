@@ -1,0 +1,113 @@
+# WardAIn
+
+A zero-trust control plane for multi-agent AI. Every agent request (tool calls and LLM calls) goes
+through one endpoint, `POST /call` on the **WardAIn Gateway**. The gateway verifies identity, checks
+the kill-switch, enforces role permissions and data-flow rules, validates inputs and outputs, injects
+chaos faults for testing, records every step in a run ledger, detects plan deviations,
+auto-quarantines misbehaving agents, rolls back their side effects and lets a human pause,
+quarantine or halt any agent. A scenario runner runs the same workflow with WardAIn **off** and
+**on** and produces a **Resilience Scorecard**.
+
+Built for AEGIS 2026, Problem Statement 01 (Agent Identity, Failure Recovery & Kill-Switch Testing).
+
+## Setup
+
+Requires Python 3.11 (macOS/Linux) or Docker.
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env
+```
+
+## Run locally (no Docker)
+
+Terminal 1: start the tools service and the gateway.
+
+```bash
+bash scripts/dev_local.sh
+```
+
+Terminal 2: source the local environment, then run scenarios.
+
+```bash
+source scripts/local_env.sh
+.venv/bin/python -m scenarios.runner --scenario normal_run --mode both --runs 1
+.venv/bin/python -m scenarios.runner --scenario all --mode both
+.venv/bin/python -m pytest -q
+```
+
+## Run the dashboard locally
+
+With the local stack from `scripts/dev_local.sh` running, open a new terminal:
+
+```bash
+source scripts/local_env.sh
+.venv/bin/streamlit run dashboard/app.py
+```
+
+Open http://localhost:8501. Pages: **Live** (agents, kill-switch buttons, event stream, approvals,
+tool state), **Run scenario**, **Scorecard**. The `source` step matters: it points the dashboard at
+`http://localhost:8000` and loads the same `ADMIN_TOKEN` the gateway uses.
+
+## Run with Docker
+
+```bash
+cp .env.example .env
+docker compose up -d --build --wait
+bash scripts/run_all.sh        # all scenarios, OFF and ON
+```
+
+Dashboard: http://localhost:8501, gateway: http://localhost:8000. Results are written to `./results`.
+
+## Demo script
+
+1. **Baseline.** On the *Run scenario* page (or CLI) run `normal_run` with mode `on`:
+   `.venv/bin/python -m scenarios.runner --scenario normal_run --mode on --runs 1`.
+   One refund, one email, audit passes; the Live page shows the full event trail.
+2. **Compromised agent, watched live.** Open the Live page, then in another terminal:
+   `.venv/bin/python -m scenarios.runner --scenario compromised_agent --mode on --runs 1 --step-delay 1.0`.
+   Watch: the Executor issues extra refunds, `plan_deviation` ⚠️ appears, the monitor quarantines
+   `executor-1`, `rollback_started` and `compensation_applied` events reverse its side effects, a
+   fresh `executor-2` resumes and the run completes. Check the Tool state tables: one refund only.
+3. **Runaway loop and HALT ALL.** Run
+   `.venv/bin/python -m scenarios.runner --scenario runaway_loop --mode on --runs 1` (the runner also
+   presses halt itself). To do it by hand, watch the payments grow on the Live page and click
+   **HALT ALL**; every further call is refused with `global_halt`, so no more payments appear.
+4. **Bypass isolation.** With Docker running, prove the agents container cannot reach the tools:
+   ```bash
+   docker compose exec agents python -c "import urllib.request; urllib.request.urlopen('http://tools:8001/health', timeout=3)"
+   ```
+   This fails (name does not resolve: `agents` is only on the internal `agentnet`). The same check
+   against `http://gateway:8000/health` succeeds. The only path to the tools is through the gateway.
+5. **Scorecard.** Run `--scenario all --mode both` (or `bash scripts/run_all.sh`), then open the
+   **Scorecard** page: OFF vs ON for every metric plus the success-rate bar chart.
+
+## Architecture
+
+```
+ agents  --(agentnet)-->  gateway  --(toolnet)-->  tools
+ (harness)                 |  identity, kill-switch, idempotency, policy,
+                           |  guards, chaos, circuit breaker, ledger,
+                           |  monitor, rollback, LLM backend
+ dashboard  --(admin API)--+
+```
+
+- `tools` (port 8001): mock refund/email/CRM system, no auth, owns `tools.db`.
+- `gateway` (port 8000): enforcement pipeline, owns `gateway.db`.
+- `agents`: scenario harness; can reach only the gateway.
+- `dashboard` (port 8501): Streamlit UI over the gateway admin API.
+
+See [docs/how-it-works.md](docs/how-it-works.md) for each component, the scenario that proves it and
+likely judge questions.
+
+## Results
+
+Official numbers come from `LLM_MODE=mock` (deterministic). The scorecard is regenerated with
+`python -m scenarios.scorecard` and written to `results/scorecard.md` and `results/scorecard.json`.
+
+## Roadmap (out of scope for this build)
+
+OPA/Rego policies, SPIFFE/SPIRE identity, Kubernetes, Redis, MCP proxy, CrewAI/AutoGen adapters,
+red-team agent, memory-poisoning defence, goal-drift detection, echo-chamber detection, self-hosted
+NIM, NemoGuard integration, React dashboard, multi-worker gateway.

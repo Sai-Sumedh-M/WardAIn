@@ -21,3 +21,5 @@
 - gateway/pipeline.py: handle_call wraps the chain and runs the monitor (step 17) for every response except 400/401, so unauthenticated callers cannot trigger quarantine of a victim agent
 - gateway/recovery.py: recovery_status.quarantined_agents lists agents with steps in the run whose current status is quarantined
 - agents/workflow.py: if a compromised executor hits a non-quarantine agent_not_active block (paused/halted) it just stops the malicious sequence and continues
+- dashboard/app.py: Run scenario launches the runner with sys.executable (the dashboard's own interpreter) instead of the literal "python"; engine radio offers only plain until Phase 5b
+- dashboard/app.py: inserts the repo root into sys.path so `.venv/bin/streamlit run dashboard/app.py` can import agents/common without PYTHONPATH

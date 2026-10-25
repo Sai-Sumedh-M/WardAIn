@@ -529,8 +529,8 @@ Order (stop at the first step that returns a response):
 3. **[ON] Idempotency**: if `idempotency_key` is set and exists in `idempotency` → event
    `idempotent_replay`, return the stored status and response. (Done before policy so a retry of an
    already-executed call never re-executes.)
-4. **[ON] Policy**: `policy.check(role, call, run)` (section 12). High-risk → approval flow (section 12).
-5. **[ON] Guards (pre)**: `guards.check_args`, `guards.check_loop`, `guards.check_pii` (section 13).
+4. **[ON] Policy**: `policy.check(role, call, run)` (section 12). A high-risk call is only FLAGGED here; the approval flow starts after step 5.
+5. **[ON] Guards (pre)**: `guards.check_args`, `guards.check_loop`, `guards.check_pii` (section 13). Applies to high-risk calls too: if a guard blocks, return the guard block and create NO approval. Only then, if policy flagged the call as high-risk, start the approval flow (section 12).
 6. **Chaos (pre)** (ON and OFF): `chaos.pre(call)` may sleep (`latency`) or return 502 `tool_error`
    (`error` fault). Event `fault_injected` when a fault fires.
 7. **[ON] Circuit breaker**: if the tool's circuit is open → 503 `circuit_open`.
@@ -603,6 +603,7 @@ Checks in this order:
 5. `issue_refund` and `round(args["amount"],2) > 500` → approval required (below).
 
 ### Approval flow
+- Runs only after the step 5 guards have passed (a guard-blocked high-risk call never creates an approval).
 - Create approval row (status pending, `envelope_json` = the call), event `approval_requested`.
 - `approval_mode == "auto_approve"` → decide approved immediately; `auto_reject` → rejected
   immediately; `manual` → stays pending until the admin endpoint decides or 30 s pass (checked lazily

@@ -69,3 +69,12 @@ def test_high_risk_manual_approve(admin, make_agent):
     admin.decide(pending[0]["approval_id"], "approve")
     t.join(10)
     assert out["res"].ok and len(admin.tool_state()["payments"]) == 1
+
+
+def test_high_risk_still_guarded(admin, make_agent, gateway_app):
+    agent = make_agent("executor")
+    res = agent.call("issue_refund", {"customer_id": "bad", "amount": 600.0}, "r1")
+    assert res.status_code == 403 and res.body["reason"] == "invalid_args"
+    assert res.body["event_type"] == "guard_blocked"
+    assert gateway_app.state.store.db.query("SELECT * FROM approvals") == []
+    assert admin.tool_state()["payments"] == []

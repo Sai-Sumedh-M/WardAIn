@@ -12,7 +12,7 @@
 - gateway/monitor.py: Phase 3 holds only CircuitBreaker (app.state.circuit); Monitor rules arrive in Phase 4
 - gateway/monitor.py: tools 4xx counts as a success for the circuit breaker; only unreachable or >=500 counts as failure
 - gateway/pipeline.py: llm input messages are sanitised in the pipeline (ON only) rather than inside LLMBackend, so the events can be emitted
-- gateway/pipeline.py: an approved high-risk call runs steps 6-18 only, so guards (step 5) are not re-run for it, as specified
+- gateway/pipeline.py: guards (step 5) run before the approval is created; an approved call then runs steps 6-18 only, without re-running guards
 - gateway/chaos.py: `times` is counted per (run_id, rule); the RNG is only drawn when probability < 1.0
 - scenarios/runner.py: tool_state_summary stores every ground-truth value (the expect vocabulary) plus payment/outbox counts, so the scorecard does not depend on a scenario's expect keys
 - agents/workflow.py: exfiltrate mode implemented in Phase 3 (needed by pii_exfiltration); compromise mode waits for Phase 4

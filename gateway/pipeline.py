@@ -208,12 +208,12 @@ def handle_call(state, authorization: str | None, body: dict) -> tuple[int, dict
         blocked = state.policy.check(agent["role"], call, store.get_run(call.run_id))
         if isinstance(blocked, PolicyBlock):
             return _block(state, call, 403, blocked.reason, "policy_blocked")
-        if state.policy.requires_approval(call):
-            return _request_approval(state, call)
         reason = (guards.check_args(call.tool, call.args)
                   or guards.check_loop(store, state.policy.cfg["limits"]["loop_threshold"], call.run_id,
                                        call.tool, call.args)
                   or guards.check_pii(call.tool, call.args))
         if reason:
             return _block(state, call, 403, reason, "guard_blocked")
+        if state.policy.requires_approval(call):
+            return _request_approval(state, call)
     return _execute(state, call, agent["role"] if agent else "unknown", on, t0)

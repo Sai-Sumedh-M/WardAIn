@@ -1,0 +1,167 @@
+"""All gateway.db reads and writes."""
+import json
+import time
+import uuid
+
+from common.sqlite import Database
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS agents(agent_id TEXT PRIMARY KEY, role TEXT, public_key TEXT, status TEXT,
+  created_at REAL);
+CREATE TABLE IF NOT EXISTS tokens(jti TEXT PRIMARY KEY, agent_id TEXT, expires_at REAL, revoked INTEGER);
+CREATE TABLE IF NOT EXISTS nonces(nonce TEXT PRIMARY KEY, ts REAL);
+CREATE TABLE IF NOT EXISTS events(event_id TEXT PRIMARY KEY, ts REAL, run_id TEXT, step_id TEXT,
+  agent_id TEXT, type TEXT, tool TEXT, detail_json TEXT);
+CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, scenario TEXT, mode TEXT, customer_id TEXT,
+  amount REAL, reason TEXT, plan_json TEXT, status TEXT, started_at REAL, ended_at REAL);
+CREATE TABLE IF NOT EXISTS steps(step_id TEXT PRIMARY KEY, run_id TEXT, agent_id TEXT, role TEXT,
+  tool TEXT, args_json TEXT, result_json TEXT, parent_step_ids_json TEXT, plan_index INTEGER,
+  deviation INTEGER, side_effect INTEGER, tainted INTEGER, ts REAL);
+CREATE TABLE IF NOT EXISTS compensations(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT,
+  step_id TEXT, tool TEXT, undo_tool TEXT, undo_args_json TEXT, applied INTEGER, applied_at REAL);
+CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, run_id TEXT, step_id TEXT,
+  status_code INTEGER, response_json TEXT);
+CREATE TABLE IF NOT EXISTS approvals(approval_id TEXT PRIMARY KEY, run_id TEXT, step_id TEXT,
+  agent_id TEXT, tool TEXT, envelope_json TEXT, status TEXT, response_json TEXT, created_at REAL,
+  decided_at REAL);
+CREATE TABLE IF NOT EXISTS config(key TEXT PRIMARY KEY, value_json TEXT);
+"""
+
+DEFAULT_CONFIG = {
+    "mode": "on",
+    "scenario": {"name": "none", "chaos": [], "seed": 42},
+    "approval_mode": "auto_reject",
+    "monitor_enabled": True,
+    "global_halt": False,
+}
+
+
+class GatewayStore:
+    def __init__(self, db_path: str):
+        """Open the database, create tables and default config."""
+        self.db = Database(db_path)
+        self.db.executescript(SCHEMA)
+        for key, value in DEFAULT_CONFIG.items():
+            self.db.execute("INSERT OR IGNORE INTO config VALUES(?,?)", (key, json.dumps(value)))
+
+    # ---- config ----
+    def get_config(self, key: str):
+        """Return one config value."""
+        row = self.db.query_one("SELECT value_json FROM config WHERE key=?", (key,))
+        return json.loads(row["value_json"]) if row else DEFAULT_CONFIG.get(key)
+
+    def all_config(self) -> dict:
+        """Return all config keys."""
+        return {r["key"]: json.loads(r["value_json"]) for r in self.db.query("SELECT * FROM config")}
+
+    def set_config(self, key: str, value) -> None:
+        """Upsert one config value."""
+        self.db.execute("INSERT OR REPLACE INTO config VALUES(?,?)", (key, json.dumps(value)))
+
+    # ---- events ----
+    def add_event(self, type: str, run_id: str | None = None, step_id: str | None = None,
+                  agent_id: str | None = None, tool: str | None = None, detail: dict | None = None) -> str:
+        """Insert an event and return its id."""
+        event_id = uuid.uuid4().hex
+        self.db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?)",
+                        (event_id, time.time(), run_id, step_id, agent_id, type, tool,
+                         json.dumps(detail or {})))
+        return event_id
+
+    def get_events(self, run_id: str | None = None, since_ts: float = 0.0, limit: int = 500) -> list[dict]:
+        """Events ordered by ts ascending, detail decoded."""
+        sql, params = "SELECT * FROM events WHERE ts > ?", [since_ts]
+        if run_id:
+            sql += " AND run_id=?"
+            params.append(run_id)
+        sql += " ORDER BY ts ASC, rowid ASC LIMIT ?"
+        params.append(limit)
+        rows = self.db.query(sql, tuple(params))
+        return [{**{k: v for k, v in r.items() if k != "detail_json"},
+                 "detail": json.loads(r["detail_json"])} for r in rows]
+
+    # ---- agents / tokens / nonces ----
+    def get_agent(self, agent_id: str) -> dict | None:
+        """Return the agent row."""
+        return self.db.query_one("SELECT * FROM agents WHERE agent_id=?", (agent_id,))
+
+    def list_agents(self) -> list[dict]:
+        """All agent rows."""
+        return self.db.query("SELECT * FROM agents ORDER BY created_at")
+
+    def upsert_agent(self, agent_id: str, role: str, public_key: str) -> None:
+        """Create or replace an active agent."""
+        self.db.execute("INSERT OR REPLACE INTO agents VALUES(?,?,?,?,?)",
+                        (agent_id, role, public_key, "active", time.time()))
+
+    def set_agent_status(self, agent_id: str, status: str) -> None:
+        """Update agent status."""
+        self.db.execute("UPDATE agents SET status=? WHERE agent_id=?", (status, agent_id))
+
+    def add_token(self, jti: str, agent_id: str, expires_at: float) -> None:
+        """Record an issued token."""
+        self.db.execute("INSERT INTO tokens VALUES(?,?,?,0)", (jti, agent_id, expires_at))
+
+    def is_token_revoked(self, jti: str) -> bool:
+        """True if the token is revoked."""
+        row = self.db.query_one("SELECT revoked FROM tokens WHERE jti=?", (jti,))
+        return bool(row and row["revoked"])
+
+    def revoke_agent_tokens(self, agent_id: str) -> None:
+        """Revoke every token of an agent."""
+        self.db.execute("UPDATE tokens SET revoked=1 WHERE agent_id=?", (agent_id,))
+
+    def add_nonce(self, nonce: str, now: float) -> bool:
+        """Insert a nonce (pruning old ones); False if it was already seen."""
+        self.db.execute("DELETE FROM nonces WHERE ts < ?", (now - 120,))
+        if self.db.query_one("SELECT 1 AS x FROM nonces WHERE nonce=?", (nonce,)):
+            return False
+        self.db.execute("INSERT INTO nonces VALUES(?,?)", (nonce, now))
+        return True
+
+    # ---- runs ----
+    def add_run(self, run_id: str, scenario: str, mode: str, customer_id: str, amount: float,
+                reason: str) -> None:
+        """Insert a running run."""
+        self.db.execute("INSERT OR REPLACE INTO runs VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (run_id, scenario, mode, customer_id, amount, reason, None, "running",
+                         time.time(), None))
+
+    def get_run(self, run_id: str) -> dict | None:
+        """Return the run row."""
+        return self.db.query_one("SELECT * FROM runs WHERE run_id=?", (run_id,))
+
+    def list_runs(self, limit: int = 100) -> list[dict]:
+        """Newest runs first."""
+        return self.db.query("SELECT * FROM runs ORDER BY started_at DESC LIMIT ?", (limit,))
+
+    def set_run_plan(self, run_id: str, plan: list[dict]) -> None:
+        """Store the plan on the run."""
+        self.db.execute("UPDATE runs SET plan_json=? WHERE run_id=?", (json.dumps(plan), run_id))
+
+    def finish_run(self, run_id: str, status: str) -> None:
+        """Set final run status and end time."""
+        self.db.execute("UPDATE runs SET status=?, ended_at=? WHERE run_id=?", (status, time.time(), run_id))
+
+    # ---- steps ----
+    def add_step(self, step: dict) -> None:
+        """Insert a step row (JSON fields given as Python objects)."""
+        self.db.execute(
+            "INSERT OR REPLACE INTO steps VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (step["step_id"], step["run_id"], step["agent_id"], step["role"], step["tool"],
+             json.dumps(step["args"], sort_keys=True), json.dumps(step["result"]),
+             json.dumps(step["parent_step_ids"]), step.get("plan_index"), step.get("deviation", 0),
+             step.get("side_effect", 0), step.get("tainted", 0), step["ts"]))
+
+    def get_steps(self, run_id: str) -> list[dict]:
+        """Steps of a run ordered by ts, JSON decoded."""
+        rows = self.db.query("SELECT * FROM steps WHERE run_id=? ORDER BY ts ASC, rowid ASC", (run_id,))
+        return [{**{k: v for k, v in r.items() if not k.endswith("_json")},
+                 "args": json.loads(r["args_json"]), "result": json.loads(r["result_json"]),
+                 "parent_step_ids": json.loads(r["parent_step_ids_json"])} for r in rows]
+
+    # ---- reset ----
+    def reset_state(self) -> None:
+        """Delete agents, tokens, nonces, idempotency and approvals (events/runs/steps are kept)."""
+        for table in ("agents", "tokens", "nonces", "idempotency", "approvals"):
+            self.db.execute(f"DELETE FROM {table}")

@@ -190,3 +190,21 @@ NIM, NemoGuard integration, React dashboard, multi-worker gateway.
 ## NVIDIA guard layers
 
 The official scorecard runs with `GUARD_BACKEND=mock`, an offline deterministic test double, so numbers stay reproducible. Mock results are never real NVIDIA detection rates; see the red-team report for those.
+
+## Red-team campaign
+
+`python -m scenarios.redteam generate --n 30` asks `nvidia/nemotron-3.5-lightning-30b-a3b` for realistic
+injection notes (30 generated here); `evaluate --backend nvidia` classifies them plus 15 seed attacks and 10 benign
+notes with each guard layer. Official run: NVIDIA backend, 45 attacks (15 seed + 30 generated), 10 benign notes,
+0 `guard_unavailable`. Full report: `results/redteam/redteam_report.md`. The official scorecard (section 19) still
+uses the deterministic mock guard backend; these are the real NVIDIA detection rates.
+
+| Layers | Detection (all) | Detection (seed) | Detection (generated) | False positives |
+|---|---|---|---|---|
+| regex | 11.1% | 33.3% | 0.0% | 0.0% |
+| regex+safety | 60.0% | 86.7% | 46.7% | 0.0% |
+| regex+judge | 48.9% | 86.7% | 30.0% | 0.0% |
+| regex+safety+judge | 68.9% | 100.0% | 53.3% | 0.0% |
+
+The regex layer misses every LLM-generated attack; the NVIDIA layers add most of the coverage, but about a third of
+generated attacks still evade all three layers, so the guard is defence in depth, not a complete defence.

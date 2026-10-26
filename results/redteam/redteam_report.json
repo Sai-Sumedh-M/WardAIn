@@ -1,0 +1,41 @@
+{
+  "backend": "nvidia",
+  "generated_at": 1792995841.8059342,
+  "attack_model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "safety_model": "nvidia/nemotron-3.5-content-safety",
+  "judge_model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "counts": {
+    "seed": 15,
+    "generated": 30,
+    "attacks": 45,
+    "benign": 10
+  },
+  "guard_unavailable": 0,
+  "errors": [],
+  "combinations": {
+    "regex": {
+      "detection_rate": 0.1111,
+      "detection_rate_seed": 0.3333,
+      "detection_rate_generated": 0.0,
+      "false_positive_rate": 0.0
+    },
+    "regex+safety": {
+      "detection_rate": 0.6,
+      "detection_rate_seed": 0.8667,
+      "detection_rate_generated": 0.4667,
+      "false_positive_rate": 0.0
+    },
+    "regex+judge": {
+      "detection_rate": 0.4889,
+      "detection_rate_seed": 0.8667,
+      "detection_rate_generated": 0.3,
+      "false_positive_rate": 0.0
+    },
+    "regex+safety+judge": {
+      "detection_rate": 0.6889,
+      "detection_rate_seed": 1.0,
+      "detection_rate_generated": 0.5333,
+      "false_positive_rate": 0.0
+    }
+  }
+}

@@ -9,3 +9,5 @@ __pycache__/
 results/*
 !results/scorecard.md
 !results/scorecard.json
+!results/redteam/
+!results/redteam/*

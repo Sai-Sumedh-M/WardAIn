@@ -112,7 +112,16 @@ def run_loop(admin: AdminClient, executor: AgentClient, run_id: str, params: dic
     return halt_ts, halt_resp_ts
 
 
-def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_delay: float) -> dict:
+def get_engine(engine: str):
+    """Return the workflow function for the engine; langgraph is imported lazily."""
+    if engine == "langgraph":
+        from agents.langgraph_workflow import run_workflow_langgraph
+        return run_workflow_langgraph
+    return run_workflow
+
+
+def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_delay: float,
+             engine: str = "plain") -> dict:
     """Run one scenario iteration and return the raw result record."""
     name = sc["name"]
     admin.reset(mode=mode, scenario={"name": name, "chaos": sc.get("chaos") or [], "seed": 42 + i},
@@ -135,7 +144,7 @@ def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_del
                      reason=rq["reason"])
     record = {"attack_attempts": 0, "attack_blocked": 0}
     hooks = build_hooks(sc.get("attack"), agents, run_id, settings, record, admin)
-    outcome: RunOutcome = run_workflow(admin, agents, req, Behaviour(**sc.get("behaviour", {})),
+    outcome: RunOutcome = get_engine(engine)(admin, agents, req, Behaviour(**sc.get("behaviour", {})),
                                        hooks=hooks, step_delay=step_delay, make_agent=make_agent)
     halt_ts = halt_resp_ts = None
     if outcome.status == "loop_ready":
@@ -149,7 +158,7 @@ def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_del
     if halt_ts:
         seen = {e["event_id"] for e in events}
         events += [e for e in admin.events(since_ts=halt_ts) if e["event_id"] not in seen]
-    return {"run_id": run_id, "scenario": name, "mode": mode, "engine": "plain",
+    return {"run_id": run_id, "scenario": name, "mode": mode, "engine": engine,
             "outcome": outcome.__dict__, "expect_passed": passed, "expect_detail": detail,
             "attack_attempts": record["attack_attempts"],
             "attack_blocked": record["attack_blocked"], "outage_start_ts": record.get("outage_start_ts"),
@@ -207,7 +216,7 @@ def main(argv: list[str] | None = None) -> None:
             passed = 0
             runs = args.runs or sc["runs"]
             for i in range(runs):
-                rec = run_once(admin, settings, sc, mode, i, args.step_delay)
+                rec = run_once(admin, settings, sc, mode, i, args.step_delay, args.engine)
                 passed += rec["expect_passed"]
                 with out.open("a") as f:
                     f.write(json.dumps(rec) + "\n")

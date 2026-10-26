@@ -154,6 +154,17 @@ official numbers.
 See [docs/how-it-works.md](docs/how-it-works.md) for each component, the scenario that proves it and
 likely judge questions.
 
+## Framework-agnostic
+
+The same workflow runs as plain Python or as a LangGraph graph (`--engine langgraph`). Both engines
+execute the same step functions and both go through the WardAIn Gateway, which never knows which engine
+is used; scorecard results are identical. LangGraph is imported only in `agents/langgraph_workflow.py`
+and uses no checkpointer: checkpoints and recovery belong to the gateway.
+
+```bash
+python -m scenarios.runner --scenario compromised_agent --mode both --engine langgraph --demo
+```
+
 ## Real model check (Phase 6)
 
 Run the stack against the NVIDIA model with the override (default stays mock):

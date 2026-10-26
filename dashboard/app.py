@@ -121,7 +121,7 @@ def page_run() -> None:
     names = sorted(p.stem for p in SCENARIO_DIR.glob("*.yaml"))
     name = st.selectbox("Scenario", names)
     mode = st.radio("Mode", ["on", "off"], horizontal=True)
-    engine = st.radio("Engine", ["plain"], horizontal=True)
+    engine = st.radio("Engine", ["plain", "langgraph"], horizontal=True)
     delay = st.number_input("Step delay (s)", value=1.0, min_value=0.0, step=0.5)
     if st.button("Run once"):
         cmd = [sys.executable, "-m", "scenarios.runner", "--scenario", name, "--mode", mode,

@@ -125,7 +125,7 @@ def page_run() -> None:
     delay = st.number_input("Step delay (s)", value=1.0, min_value=0.0, step=0.5)
     if st.button("Run once"):
         cmd = [sys.executable, "-m", "scenarios.runner", "--scenario", name, "--mode", mode,
-               "--runs", "1", "--step-delay", str(delay), "--engine", engine]
+               "--runs", "1", "--step-delay", str(delay), "--engine", engine, "--demo"]
         with st.spinner("Running..."):
             proc = subprocess.run(cmd, capture_output=True, text=True, env=os.environ.copy())
         st.code(proc.stdout + proc.stderr)

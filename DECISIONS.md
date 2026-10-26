@@ -33,3 +33,5 @@
 - docker-compose.yml: gateway mounts ./results read-only so the scorecard endpoint can read it; the gateway still writes nothing there
 - dashboard.html: routine events (call_received, tool_called, checkpoint_saved) are dimmed rather than hidden; per-agent Halt asks for confirmation, HALT ALL does not
 - dashboard.html: halted agents have all controls disabled (halt revokes their tokens, so resume would not help)
+- scenarios/runner.py: --demo writes raw files to data/demo_runs/ (relative to the working directory, gitignored via data/) and skips the scorecard; the Streamlit "Run once" button always passes --demo
+- README.md: all demo-section runner commands (and the quick-start normal_run example) use --demo; only the `all --mode both` command is official

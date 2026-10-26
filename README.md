@@ -75,7 +75,8 @@ Terminal 2: source the local environment, then run scenarios.
 
 ```bash
 source scripts/local_env.sh
-.venv/bin/python -m scenarios.runner --scenario normal_run --mode both --runs 1
+.venv/bin/python -m scenarios.runner --scenario normal_run --mode both --runs 1 --demo
+# official numbers: the only command that regenerates results/scorecard.*
 .venv/bin/python -m scenarios.runner --scenario all --mode both
 .venv/bin/python -m pytest -q
 ```
@@ -110,16 +111,20 @@ It shows the live agent graph, event feed, current run, tool state, HALT ALL and
 single offline HTML file served by the gateway; scenarios are still started from the terminal or the
 Streamlit dashboard.
 
+Every demo command below passes `--demo`: raw output goes to `data/demo_runs/` (gitignored) and
+`results/scorecard.*` is left alone. Only `--scenario all --mode both` without `--demo` regenerates the
+official numbers.
+
 1. **Baseline.** On the *Run scenario* page (or CLI) run `normal_run` with mode `on`:
-   `.venv/bin/python -m scenarios.runner --scenario normal_run --mode on --runs 1`.
+   `.venv/bin/python -m scenarios.runner --scenario normal_run --mode on --runs 1 --demo`.
    One refund, one email, audit passes; the Live page shows the full event trail.
 2. **Compromised agent, watched live.** Open the Live page, then in another terminal:
-   `.venv/bin/python -m scenarios.runner --scenario compromised_agent --mode on --runs 1 --step-delay 1.0`.
+   `.venv/bin/python -m scenarios.runner --scenario compromised_agent --mode on --runs 1 --step-delay 1.0 --demo`.
    Watch: the Executor issues extra refunds, `plan_deviation` ⚠️ appears, the monitor quarantines
    `executor-1`, `rollback_started` and `compensation_applied` events reverse its side effects, a
    fresh `executor-2` resumes and the run completes. Check the Tool state tables: one refund only.
 3. **Runaway loop and HALT ALL.** Run
-   `.venv/bin/python -m scenarios.runner --scenario runaway_loop --mode on --runs 1` (the runner also
+   `.venv/bin/python -m scenarios.runner --scenario runaway_loop --mode on --runs 1 --demo` (the runner also
    presses halt itself). To do it by hand, watch the payments grow on the Live page and click
    **HALT ALL**; every further call is refused with `global_halt`, so no more payments appear.
 4. **Bypass isolation.** With Docker running, prove the agents container cannot reach the tools:
@@ -156,7 +161,7 @@ Run the stack against the NVIDIA model with the override (default stays mock):
 ```bash
 LLM_MODE_OVERRIDE=nvidia bash scripts/dev_local.sh      # terminal 1
 LLM_MODE_OVERRIDE=nvidia source scripts/local_env.sh    # terminal 2 (runner)
-python -m scenarios.runner --scenario normal_run --mode on --runs 3
+python -m scenarios.runner --scenario normal_run --mode on --runs 3 --demo
 ```
 
 With `nvidia/nemotron-3.5-lightning-30b-a3b` (thinking disabled) `normal_run --mode on --runs 3`

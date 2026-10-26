@@ -173,7 +173,15 @@ def wait_for_gateway(url: str, timeout: float = 30.0) -> None:
         time.sleep(0.5)
 
 
-def main() -> None:
+DEMO_DIR = Path("data/demo_runs")
+
+
+def raw_dir_for(settings, demo: bool) -> Path:
+    """Where raw results go: data/demo_runs for --demo, else results/raw (official)."""
+    return DEMO_DIR if demo else Path(settings.RESULTS_DIR) / "raw"
+
+
+def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--scenario", required=True)
@@ -181,13 +189,15 @@ def main() -> None:
     ap.add_argument("--runs", type=int)
     ap.add_argument("--step-delay", type=float, default=0.0)
     ap.add_argument("--engine", choices=["plain", "langgraph"], default="plain")
-    args = ap.parse_args()
+    ap.add_argument("--demo", action="store_true",
+                    help="write raw output to data/demo_runs/ and leave results/scorecard.* untouched")
+    args = ap.parse_args(argv)
     settings = load_settings()
     wait_for_gateway(settings.GATEWAY_URL)
     admin = AdminClient(settings.GATEWAY_URL, settings.ADMIN_TOKEN)
     names = all_scenarios() if args.scenario == "all" else [args.scenario]
     modes = ["off", "on"] if args.mode == "both" else [args.mode]
-    raw_dir = Path(settings.RESULTS_DIR) / "raw"
+    raw_dir = raw_dir_for(settings, args.demo)
     raw_dir.mkdir(parents=True, exist_ok=True)
     for name in names:
         sc = load_scenario(name)
@@ -202,7 +212,8 @@ def main() -> None:
                 with out.open("a") as f:
                     f.write(json.dumps(rec) + "\n")
             print(f"{name} [{mode}]: {passed}/{runs} successful")
-    scorecard.main()
+    if not args.demo:
+        scorecard.main()
 
 
 if __name__ == "__main__":

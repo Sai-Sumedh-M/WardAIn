@@ -978,9 +978,12 @@ target_balance_delta: 49.99, run_status: completed`.
 
 ### scenarios/runner.py (CLI)
 `python -m scenarios.runner --scenario <name|all> --mode <on|off|both> [--runs N] [--step-delay S]
-[--engine plain|langgraph]` (default `plain`; `langgraph` imports `agents.langgraph_workflow` lazily and
+[--engine plain|langgraph] [--demo]` (default `plain`; `langgraph` imports `agents.langgraph_workflow` lazily and
 uses `run_workflow_langgraph` instead of `run_workflow`; Phase 5b).
 Before the first run, the runner waits up to 30 s for `GET /health` on the gateway.
+`--demo` (for demos and dev runs): raw output goes to `data/demo_runs/` (gitignored) instead of
+`results/raw/`, and `scenarios.scorecard.main()` is NOT called, so `results/*` is never touched. Official
+numbers are regenerated only by `--scenario all --mode both` WITHOUT `--demo`.
 For each scenario and mode, for i in range(runs):
 1. `admin.reset(mode=mode, scenario={"name": name, "chaos": chaos, "seed": 42 + i},
    approval_mode="auto_reject", monitor_enabled=...)`. Gateway reset: delete all rows in `agents,
@@ -1071,7 +1074,7 @@ Uses `AdminClient` (GATEWAY_URL, ADMIN_TOKEN). Sidebar radio with pages:
 2. **Run scenario**: selectbox of scenario names, radio mode on/off, radio engine plain/langgraph
    (langgraph option added in Phase 5b), number input step delay (default 1.0), button "Run once" →
    `subprocess.run(["python", "-m", "scenarios.runner", "--scenario", name, "--mode", mode, "--runs",
-   "1", "--step-delay", str(delay), "--engine", engine])` and show stdout.
+   "1", "--step-delay", str(delay), "--engine", engine, "--demo"])` (always `--demo`) and show stdout.
 3. **Scorecard**: render `results/scorecard.md` if it exists, plus a bar chart (`st.bar_chart`) of
    task_success_rate OFF vs ON per scenario from `results/scorecard.json`.
 

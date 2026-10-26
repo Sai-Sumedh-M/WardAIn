@@ -118,6 +118,7 @@ h2 { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .ev.amber { border-left-color: var(--quarantined); background: var(--quarantined-bg); }
 .ev.amber .ty { color: var(--quarantined); }
 .ev.fx { border-left-color: var(--ink); }
+h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .nodata { color: var(--muted); padding: 12px 4px; }
 
 /* run + tool state */
@@ -134,12 +135,13 @@ th { text-align: left; font-weight: 600; color: var(--muted); border-bottom: 1px
 td { padding: 3px 6px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr.reversed td, tr.recalled td { color: var(--muted); text-decoration: line-through; }
-tr.external td { background: var(--halted-bg); color: var(--halted); font-weight: 600; text-decoration: none; }
+tr.leak td { background: var(--halted-bg); color: var(--halted); font-weight: 600; text-decoration: none; }
 .sub { margin-top: 14px; }
 .sub h2 { display: flex; justify-content: space-between; }
 
 /* scorecard */
 .scorewrap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.raw { font: 11px var(--mono); color: var(--muted); }
 td.off { color: var(--halted); } td.on { color: var(--active); font-weight: 600; }
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: baseline; }
@@ -192,7 +194,8 @@ svg .lbl { fill: var(--muted); }
     </section>
     <div class="cols">
       <section class="panel">
-        <h2>Event feed (newest first)</h2>
+        <h2><span>Event feed (newest first)</span>
+          <label style="font-weight:400"><input type="checkbox" id="important" checked> Important only</label></h2>
         <div class="feed" id="feed" aria-live="off"></div>
       </section>
       <div>
@@ -304,8 +307,9 @@ function reasonOf(e) {
   return "";
 }
 function renderFeed() {
-  if (!events.length) { $("feed").innerHTML = '<div class="nodata">No events yet. Start a scenario from the terminal or the Streamlit dashboard.</div>'; return; }
-  $("feed").innerHTML = events.map((e) => {
+  const shown = $("important").checked ? events.filter((e) => !ROUTINE.has(e.type)) : events;
+  if (!shown.length) { $("feed").innerHTML = '<div class="nodata">No events yet. Start a scenario from the terminal or the Streamlit dashboard.</div>'; return; }
+  $("feed").innerHTML = shown.map((e) => {
     const cls = RED.has(e.type) ? "red" : AMBER.has(e.type) ? "amber" : e.type === "side_effect" ? "fx" : ROUTINE.has(e.type) ? "routine" : "";
     return `<div class="ev ${cls}"><span class="t">${fmtTime(e.ts)}</span><span class="ty">${esc(e.type)}</span>
       <span class="ag mono">${esc(e.agent_id || "")}</span><span class="tl mono">${esc(e.tool || "")}</span><span class="rs">${esc(reasonOf(e))}</span></div>`;
@@ -328,40 +332,59 @@ function table(cols, rows, rowCls) {
   const body = rows.map((r) => `<tr class="${esc(rowCls(r))}">${cols.map((c) => `<td${c.num ? ' class="num"' : ""}>${esc(c.v(r))}</td>`).join("")}</tr>`).join("");
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
-function renderTools(ts) {
+function renderTools(ts, run) {
   const pay = (ts.payments || []).slice().sort((a, b) => b.created_at - a.created_at);
   const done = pay.filter((p) => p.status === "completed").length;
   $("payments").innerHTML = `<div class="muted" style="margin-bottom:4px">${done} completed, ${pay.length - done} reversed</div>` +
     table([{h: "Payment", v: (r) => r.payment_id}, {h: "Customer", v: (r) => r.customer_id},
       {h: "Amount", num: 1, v: (r) => Number(r.amount).toFixed(2)}, {h: "Status", v: (r) => r.status}],
       pay.slice(0, 12), (r) => r.status);
+  const target = (ts.customers || []).find((c) => run && c.customer_id === run.customer_id);
+  const kind = (o) => (target && o.to_addr === target.email ? "customer"
+    : o.external && o.status === "sent" ? "leak" : o.external ? "external" : "internal");
   const out = (ts.outbox || []).slice().sort((a, b) => b.created_at - a.created_at);
-  const ext = out.filter((o) => o.external && o.status === "sent").length;
-  $("outbox").innerHTML = `<div class="muted" style="margin-bottom:4px">${out.length} ${out.length === 1 ? "email" : "emails"}, ${ext} sent externally</div>` +
-    table([{h: "To", v: (r) => r.to_addr}, {h: "Subject", v: (r) => r.subject}, {h: "Status", v: (r) => r.status + (r.external ? " (external)" : "")}],
-      out.slice(0, 12), (r) => (r.external && r.status === "sent" ? "external " : "") + r.status);
+  const leaks = out.filter((o) => kind(o) === "leak").length;
+  $("outbox").innerHTML = `<div class="muted" style="margin-bottom:4px">${out.length} ${out.length === 1 ? "email" : "emails"}, ${leaks} ${leaks === 1 ? "leak" : "leaks"}</div>` +
+    table([{h: "To", v: (r) => r.to_addr}, {h: "Subject", v: (r) => r.subject},
+      {h: "Status", v: (r) => ({leak: "LEAK", customer: "customer"}[kind(r)] || kind(r)) + (r.status === "sent" ? "" : " (" + r.status + ")")}],
+      out.slice(0, 12), (r) => (kind(r) === "leak" ? "leak " : "") + r.status);
 }
 
 /* ---------- scorecard ---------- */
-const fmt = (v) => (v == null ? "n/a" : (Math.round(v * 100) / 100).toString());
+const RATES = new Set(["impersonation_block_rate", "replay_block_rate", "corrupted_task_success", "false_block_rate",
+  "rollback_fidelity", "task_success_rate"]);
+const LABELS = {
+  impersonation_block_rate: "Impersonation attempts blocked", replay_block_rate: "Replayed calls blocked",
+  unauthorized_actions_executed: "Unauthorized actions executed", injected_refunds_executed: "Injected refunds executed",
+  mttd_ms: "Time to detect outage", mttr_ms: "Time to recover from outage",
+  duplicate_refunds: "Duplicate refunds after retry", corrupted_task_success: "Tasks completed despite corrupted output",
+  kill_latency_ms: "Kill-switch response time", post_kill_leakage: "Payments leaked after halt",
+  blast_radius_agents: "Agents affected by compromise", residual_bad_side_effects: "Bad side effects left after recovery",
+  rollback_fidelity: "Side effects rolled back", pii_leaks: "PII emails sent to outsiders",
+  false_block_rate: "Legitimate calls wrongly blocked", gateway_overhead_p95_ms: "Gateway overhead (p95)",
+  task_success_rate: "Task success",
+};
+const num = (v) => Math.round(v * 100) / 100;
+const pct = (v) => Math.round(v * 1000) / 10 + "%";
+function fmtMetric(m, v) {
+  if (v == null) return "n/a";
+  if (RATES.has(m)) return pct(v);
+  return num(v) + (m.endsWith("_ms") ? " ms" : "");
+}
+function fmtTarget(m, t) { return RATES.has(m) ? String(t).replace(/\d+(\.\d+)?/g, (x) => pct(Number(x))) : t; }
 async function loadScorecard() {
   try {
     const sc = await api("/admin/scorecard");
     const rows = sc.metrics.filter((m) => m.metric !== "task_success_rate");
-    $("metrics").innerHTML = table([{h: "Metric", v: (r) => r.metric}, {h: "Scenario", v: (r) => r.scenario},
-      {h: "OFF", num: 1, v: (r) => fmt(r.off)}, {h: "ON", num: 1, v: (r) => fmt(r.on)}, {h: "Target", v: (r) => r.target}],
-      rows, () => "");
-    markScoreColumns();
+    const body = rows.map((m) => `<tr><td>${esc(LABELS[m.metric] || m.metric)}<div class="raw">${esc(m.metric)}</div></td>
+      <td>${esc(m.scenario)}</td><td class="num off">${esc(fmtMetric(m.metric, m.off))}</td>
+      <td class="num on">${esc(fmtMetric(m.metric, m.on))}</td><td>${esc(fmtTarget(m.metric, m.target))}</td></tr>`).join("");
+    $("metrics").innerHTML = `<table><thead><tr><th>Metric</th><th>Scenario</th><th class="num">OFF</th><th class="num">ON</th><th>Target</th></tr></thead><tbody>${body}</tbody></table>`;
     $("bars").innerHTML = bars(sc.scenarios.slice().sort((a, b) => a.scenario.localeCompare(b.scenario)));
   } catch (e) {
     if (e instanceof AuthError) return showGate("Admin token rejected.");
     const msg = e.status === 404 ? "No scorecard yet. Run scenarios with --mode both to generate results/scorecard.json." : "Could not load the scorecard.";
     $("metrics").innerHTML = `<div class="nodata">${esc(msg)}</div>`; $("bars").innerHTML = "";
-  }
-}
-function markScoreColumns() {
-  for (const tr of document.querySelectorAll("#metrics tbody tr")) {
-    const n = tr.querySelectorAll("td.num"); if (n[0]) n[0].className = "num off"; if (n[1]) n[1].className = "num on";
   }
 }
 function bars(list) {
@@ -383,7 +406,7 @@ async function tick() {
     const q = since ? `/admin/events?since_ts=${since}&limit=500` : "/admin/events?limit=200";
     const [agents, runs, cfg, ts, evs] = await Promise.all([api("/admin/agents"), api("/admin/runs"), api("/admin/config"),
       api("/admin/tool_state"), api(q)]);
-    lastConfig = cfg; renderMode(cfg); renderAgents(agents); renderRun(runs[0]); renderTools(ts);
+    lastConfig = cfg; renderMode(cfg); renderAgents(agents); renderRun(runs[0]); renderTools(ts, runs[0]);
     if (evs.length) {
       since = Math.max(since, ...evs.map((e) => e.ts));
       events = evs.slice().reverse().concat(events).slice(0, MAX_EVENTS);
@@ -412,6 +435,7 @@ document.addEventListener("click", (ev) => {
   if (a === "halt" && !confirm(`Halt ${id}? Its tokens are revoked and it cannot resume.`)) return;
   act(`/control/${encodeURIComponent(id)}/${a}`, a);
 });
+$("important").addEventListener("change", renderFeed);
 $("halt-all").addEventListener("click", () => act("/control/halt_all", "halt all"));
 $("resume-all").addEventListener("click", () => act("/control/resume_all", "resume all"));
 for (const b of document.querySelectorAll("nav button")) b.addEventListener("click", () => selectView(b.dataset.view));

@@ -216,6 +216,7 @@ svg .lbl { fill: var(--muted); }
         <div class="legend"><span><i style="background:var(--halted)"></i>WardAIn OFF</span><span><i style="background:var(--active)"></i>WardAIn ON</span></div>
         <div id="bars"></div></section>
     </div>
+    <section class="panel sub"><h2>Red-team campaign (LLM-generated attacks)</h2><div id="redteam"></div></section>
   </div>
 </main>
 
@@ -259,7 +260,7 @@ function selectView(name) {
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", String(b.dataset.view === name));
   $("live").hidden = $("gate").hidden === false || name !== "live";
   $("score").hidden = $("gate").hidden === false || name !== "score";
-  if (name === "score" && token) loadScorecard();
+  if (name === "score" && token) { loadScorecard(); loadRedteam(); }
 }
 
 /* ---------- rendering ---------- */
@@ -299,7 +300,8 @@ function reasonOf(e) {
   const d = e.detail || {};
   if (d.reason) return d.reason;
   if (d.rule) return "rule " + d.rule + (d.kind ? " (" + d.kind + ")" : "");
-  if (d.kind) return d.kind + (d.field ? ": " + d.field : "");
+  if (d.kind) return d.kind + (d.field ? ": " + d.field : "") + (d.layer ? " [" + d.layer + "]" : "");
+  if (e.type === "injection_sanitized" && d.layer) return (d.field ? d.field + " " : "") + "[" + d.layer + "]";
   if (d.decision) return d.decision;
   if (d.undo_tool) return d.undo_tool;
   if (e.type === "tool_called" && d.status_code != null) return d.status_code + " in " + Math.round(d.latency_ms) + " ms";
@@ -385,6 +387,26 @@ async function loadScorecard() {
     if (e instanceof AuthError) return showGate("Admin token rejected.");
     const msg = e.status === 404 ? "No scorecard yet. Run scenarios with --mode both to generate results/scorecard.json." : "Could not load the scorecard.";
     $("metrics").innerHTML = `<div class="nodata">${esc(msg)}</div>`; $("bars").innerHTML = "";
+  }
+}
+const COMBOS = ["regex", "regex+safety", "regex+judge", "regex+safety+judge"];
+function redteamPanel(r) {
+  const c = r.counts || {}, W = 420, L = 130, R = 44, bw = W - L - R, rowH = 44;
+  const bar = (v, y, color) => `<rect x="${L}" y="${y}" width="${Math.max(2, v * bw)}" height="10" rx="2" fill="${color}"/><text x="${L + v * bw + 6}" y="${y + 9}">${pct(v)}</text>`;
+  const rows = COMBOS.filter((k) => r.combinations && r.combinations[k]).map((k, i) => {
+    const m = r.combinations[k], y = i * rowH + 2;
+    return `<text x="0" y="${y + 15}" class="lbl">${esc(k)}</text>${bar(m.detection_rate, y, "var(--active)")}${bar(m.false_positive_rate, y + 14, "var(--halted)")}`;
+  }).join("");
+  return `<div class="legend"><span><i style="background:var(--active)"></i>Detection rate</span><span><i style="background:var(--halted)"></i>False-positive rate</span></div>
+    <svg viewBox="0 0 ${W} ${COMBOS.length * rowH + 4}" width="100%" role="img" aria-label="Red-team detection and false-positive rate per guard layer combination">${rows}</svg>
+    <p class="muted">Backend: ${esc(r.backend)}. Attacks: ${esc(c.attacks)} (${esc(c.seed)} seed, ${esc(c.generated)} generated), ${esc(c.ambiguous)} ambiguous excluded, ${esc(c.benign)} benign.</p>
+    <p class="muted">Detection is one layer: actions that slip past it are still stopped by role, scope and recipient rules, plan-deviation detection and rollback.</p>`;
+}
+async function loadRedteam() {
+  try { $("redteam").innerHTML = redteamPanel(await api("/admin/redteam")); }
+  catch (e) {
+    if (e instanceof AuthError) return;
+    $("redteam").innerHTML = `<div class="nodata">${esc(e.status === 404 ? "No red-team report yet. Run python -m scenarios.redteam evaluate." : "Could not load the red-team report.")}</div>`;
   }
 }
 function bars(list) {

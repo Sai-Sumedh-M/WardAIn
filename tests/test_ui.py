@@ -27,3 +27,14 @@ def test_scorecard_served_from_results_dir(tmp_settings, tools_http, tmp_path):
     app = create_app(replace(tmp_settings, RESULTS_DIR=str(tmp_path)), tools_http=tools_http)
     r = TestClient(app).get("/admin/scorecard", headers={"X-Admin-Token": "test-admin"})
     assert r.status_code == 200 and r.json() == {"metrics": [], "scenarios": []}
+
+
+def test_redteam_requires_admin(gw_http):
+    assert gw_http.get("/admin/redteam").status_code == 401
+    assert gw_http.get("/admin/redteam", headers={"X-Admin-Token": "wrong"}).status_code == 401
+
+
+def test_redteam_missing_returns_404(gw_http):
+    r = gw_http.get("/admin/redteam", headers={"X-Admin-Token": "test-admin"})
+    assert r.status_code == 404
+    assert r.json() == {"error": "no_redteam"}

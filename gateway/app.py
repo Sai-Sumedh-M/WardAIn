@@ -214,4 +214,13 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
         except (OSError, ValueError):
             return JSONResponse({"error": "no_scorecard"}, status_code=404)
 
+    @app.get("/admin/redteam")
+    def redteam(x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        try:
+            return json.loads((Path(settings.RESULTS_DIR) / "redteam" / "redteam_report.json").read_text())
+        except (OSError, ValueError):
+            return JSONResponse({"error": "no_redteam"}, status_code=404)
+
     return app

@@ -27,3 +27,4 @@
 - agents/workflow.py: PLANNER_PROMPT embeds the canonical plan for C999/10.0 and says plan_index starts at 0; strict comparison unchanged (real model now gives llm_fallbacks=0)
 - scripts/dev_local.sh: LLM_MODE_OVERRIDE (applied after sourcing .env) selects LLM_MODE; replaces the manual-start note above
 - scripts: real-model raw output is kept in data/real_model/ (gitignored) so results/ holds only mock numbers
+- scenarios/scorecard.py: kill_latency_ms is ON-only (OFF = n/a), since the kill-switch is not enforced in OFF mode

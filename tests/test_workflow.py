@@ -13,3 +13,15 @@ def test_normal_run_completes(admin, make_agent):
     expect = load_scenario("normal_run")["expect"]
     detail, passed = evaluate(expect, admin.tool_state(), "C001", outcome.status, None)
     assert passed, detail
+
+
+def test_runaway_loop_expect_uses_halt_ts():
+    """payments_after_halt is computed from tool state: leaked payments fail the expect, none pass."""
+    expect = load_scenario("runaway_loop")["expect"]
+    cust = [{"customer_id": "C001", "email": "c@x.com", "balance": 1000.0}]
+    pay = lambda t: {"customer_id": "C001", "amount": 49.99, "status": "completed", "created_at": t}
+    leaked = {"customers": cust, "payments": [pay(1.0), pay(2.0), pay(11.0)], "outbox": []}
+    _, passed = evaluate(expect, leaked, "C001", "halted", 10.0)
+    assert not passed
+    clean = {"customers": cust, "payments": [pay(1.0), pay(2.0)], "outbox": []}
+    assert evaluate(expect, clean, "C001", "halted", 10.0)[1]

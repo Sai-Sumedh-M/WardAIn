@@ -5,3 +5,7 @@ results/
 __pycache__/
 .pytest_cache/
 .DS_Store
+!results/
+results/*
+!results/scorecard.md
+!results/scorecard.json

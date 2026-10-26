@@ -23,3 +23,4 @@
 - agents/workflow.py: if a compromised executor hits a non-quarantine agent_not_active block (paused/halted) it just stops the malicious sequence and continues
 - dashboard/app.py: Run scenario launches the runner with sys.executable (the dashboard's own interpreter) instead of the literal "python"; engine radio offers only plain until Phase 5b
 - dashboard/app.py: inserts the repo root into sys.path so `.venv/bin/streamlit run dashboard/app.py` can import agents/common without PYTHONPATH
+- README.md: Phase 6 real-model run was done with the gateway started manually (LLM_MODE=nvidia), since dev_local.sh sources .env which sets mock

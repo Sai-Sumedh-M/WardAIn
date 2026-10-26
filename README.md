@@ -106,6 +106,14 @@ likely judge questions.
 Official numbers come from `LLM_MODE=mock` (deterministic). The scorecard is regenerated with
 `python -m scenarios.scorecard` and written to `results/scorecard.md` and `results/scorecard.json`.
 
+### Real model check (Phase 6)
+
+`normal_run --mode on --runs 3` with `LLM_MODE=nvidia` (`nvidia/nemotron-3.5-lightning-30b-a3b`,
+thinking disabled) completed 3/3 with EXPECT_OK holding. Each run used 1 documented fallback
+(`llm_fallbacks=1`): the model numbers `plan_index` from 1, so the planner output differs from the
+canonical plan and the canonical plan is used. The other LLM calls (`review_customer`, `email_body`)
+were parsed without fallback. The official scorecard above was rerun in mock mode.
+
 ## Roadmap (out of scope for this build)
 
 OPA/Rego policies, SPIFFE/SPIRE identity, Kubernetes, Redis, MCP proxy, CrewAI/AutoGen adapters,

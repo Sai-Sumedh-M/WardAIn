@@ -13,7 +13,8 @@ def tmp_settings(tmp_path) -> Settings:
     return Settings(LLM_MODE="mock", ADMIN_TOKEN="test-admin",
                     GATEWAY_DB_PATH=str(tmp_path / "gateway.db"),
                     TOOLS_DB_PATH=str(tmp_path / "tools.db"),
-                    GATEWAY_KEY_PATH=str(tmp_path / "gateway_ed25519.pem"))
+                    GATEWAY_KEY_PATH=str(tmp_path / "gateway_ed25519.pem"),
+                    RESULTS_DIR=str(tmp_path / "results"))
 
 
 @pytest.fixture

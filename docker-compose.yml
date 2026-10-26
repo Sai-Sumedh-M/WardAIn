@@ -13,7 +13,7 @@ services:
     build: .
     command: uvicorn gateway.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1
     env_file: .env
-    volumes: [gateway-data:/data]
+    volumes: [gateway-data:/data, "./results:/app/results:ro"]
     ports: ["8000:8000"]
     networks: [default, agentnet, toolnet]
     healthcheck:

@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WardAIn Console</title>
+<style>
+:root {
+  --paper: #e8ebe8; --panel: #f5f7f5; --ink: #17222c; --muted: #5d6b76; --line: #c9d0cc;
+  --active: #1e7b6c; --paused: #5d7390; --quarantined: #c47a0c; --halted: #b42318;
+  --active-bg: #d5ebe6; --paused-bg: #dde4ee; --quarantined-bg: #f6e6c8; --halted-bg: #f6d9d5;
+  --focus: #0b57d0;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12191f; --panel: #1a232b; --ink: #e3e9ea; --muted: #93a1ab; --line: #2e3b45;
+    --active: #4fc3ae; --paused: #8fa6c4; --quarantined: #e8a43a; --halted: #ff7b6e;
+    --active-bg: #173a35; --paused-bg: #26323f; --quarantined-bg: #3b2e14; --halted-bg: #43201d;
+    --focus: #8ab4ff;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12191f; --panel: #1a232b; --ink: #e3e9ea; --muted: #93a1ab; --line: #2e3b45;
+  --active: #4fc3ae; --paused: #8fa6c4; --quarantined: #e8a43a; --halted: #ff7b6e;
+  --active-bg: #173a35; --paused-bg: #26323f; --quarantined-bg: #3b2e14; --halted-bg: #43201d;
+  --focus: #8ab4ff;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+
+/* header */
+header { position: sticky; top: 0; z-index: 5; background: var(--ink); color: var(--paper);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 10px 16px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) header { background: #0b1015; color: #e3e9ea; } }
+.brand { font-size: 18px; font-weight: 700; letter-spacing: .01em; }
+.brand span { font-weight: 400; opacity: .6; margin-left: 8px; font-size: 13px; }
+.mode { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid currentColor;
+  border-radius: 3px; font-weight: 600; opacity: .95; }
+.mode i { width: 9px; height: 9px; border-radius: 50%; background: #8a949c; }
+.mode.on i { background: #4fc3ae; } .mode.off i { background: #ff7b6e; }
+.mode.off { border-style: dashed; }
+.spacer { flex: 1; }
+nav { display: flex; gap: 4px; }
+nav button { background: none; border: 0; padding: 6px 12px; border-bottom: 2px solid transparent; opacity: .7; }
+nav button[aria-selected="true"] { opacity: 1; border-bottom-color: currentColor; font-weight: 600; }
+.halt-plate { display: flex; gap: 8px; align-items: stretch; padding: 4px; border: 1px solid #ffffff40; border-radius: 6px; }
+.halt-btn { background: #d92d20; color: #fff; border: 0; border-radius: 4px; padding: 8px 18px; font-weight: 800;
+  letter-spacing: .06em; font-size: 15px; box-shadow: inset 0 -3px 0 #00000040; }
+.halt-btn:active { transform: translateY(1px); box-shadow: none; }
+.resume-btn { background: transparent; border: 1px solid #ffffff60; border-radius: 4px; padding: 8px 12px; color: inherit; }
+.resume-btn:disabled { opacity: .35; cursor: default; }
+body.halted .halt-btn { animation: throb 1.2s ease-in-out infinite; }
+@keyframes throb { 50% { background: #8f1a10; } }
+@media (prefers-reduced-motion: reduce) { body.halted .halt-btn { animation: none; background: #8f1a10; } }
+.tokenbar { display: flex; gap: 6px; align-items: center; font-size: 12px; opacity: .85; }
+.tokenbar button { background: none; border: 0; color: inherit; text-decoration: underline; padding: 0; }
+.conn { font-size: 12px; font-family: var(--mono); opacity: .85; }
+.conn.bad { color: #ff9b91; opacity: 1; }
+
+.banner { display: none; background: var(--halted); color: #fff; padding: 8px 16px; font-weight: 600; }
+body.halted .banner { display: block; }
+
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; margin-bottom: 16px; }
+h2 { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.view[hidden] { display: none; }
+
+/* gate */
+#gate { max-width: 460px; margin: 48px auto; }
+#gate form { display: flex; gap: 8px; margin-top: 12px; }
+#gate input { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink); font: inherit; }
+#gate button { background: var(--ink); color: var(--paper); border: 0; border-radius: 4px; padding: 8px 14px; }
+#gate .err { color: var(--halted); margin-top: 8px; min-height: 1.4em; }
+
+/* agent pipeline */
+.pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+.lane { position: relative; min-width: 0; }
+.lane:not(:last-child)::after { content: ""; position: absolute; right: -22px; top: 30px; width: 16px; height: 16px;
+  border-top: 2px solid var(--muted); border-right: 2px solid var(--muted); transform: rotate(45deg) scale(.6); opacity: .7; }
+.lane h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.agent { border: 1px solid var(--line); border-left: 6px solid var(--sc, var(--line)); background: var(--bg, var(--panel));
+  border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; }
+.agent[data-status="active"] { --sc: var(--active); --bg: var(--active-bg); }
+.agent[data-status="paused"] { --sc: var(--paused); --bg: var(--paused-bg); }
+.agent[data-status="quarantined"] { --sc: var(--quarantined); --bg: var(--quarantined-bg); }
+.agent[data-status="halted"] { --sc: var(--halted); --bg: var(--halted-bg); }
+.agent.old { opacity: .72; }
+.agent .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.agent .id { font-family: var(--mono); font-weight: 600; word-break: break-all; }
+.agent .st { font-weight: 700; color: var(--sc); font-size: 12px; }
+.agent .tag { font-size: 11px; color: var(--muted); }
+.agent .ctl { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.agent .ctl button { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+.agent .ctl button:disabled { opacity: .35; cursor: default; }
+.agent .ctl button[data-act="halt"] { border-color: var(--halted); color: var(--halted); }
+.lane .empty { border: 1px dashed var(--line); border-radius: 4px; padding: 10px; color: var(--muted); font-size: 12px; }
+
+.cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.cols > section { margin-bottom: 0; }
+
+/* feed */
+.feed { max-height: 560px; overflow-y: auto; font-size: 12.5px; }
+.ev { display: grid; grid-template-columns: 92px 150px 96px 110px 1fr; gap: 8px; padding: 3px 6px 3px 8px;
+  border-left: 4px solid transparent; border-bottom: 1px solid var(--line); align-items: baseline; }
+.ev > * { min-width: 0; overflow-wrap: anywhere; }
+.ev .t { font-family: var(--mono); color: var(--muted); }
+.ev .ty { font-weight: 600; }
+.ev.routine { opacity: .5; }
+.ev.red { border-left-color: var(--halted); background: var(--halted-bg); }
+.ev.red .ty { color: var(--halted); }
+.ev.amber { border-left-color: var(--quarantined); background: var(--quarantined-bg); }
+.ev.amber .ty { color: var(--quarantined); }
+.ev.fx { border-left-color: var(--ink); }
+.nodata { color: var(--muted); padding: 12px 4px; }
+
+/* run + tool state */
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 0 0 12px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+.chip { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 700;
+  background: var(--paused-bg); color: var(--paused); }
+.chip.completed { background: var(--active-bg); color: var(--active); }
+.chip.running { background: var(--paused-bg); color: var(--paused); }
+.chip.failed, .chip.halted { background: var(--halted-bg); color: var(--halted); }
+.chip.rolled_back { background: var(--quarantined-bg); color: var(--quarantined); }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th { text-align: left; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); padding: 3px 6px; }
+td { padding: 3px 6px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.reversed td, tr.recalled td { color: var(--muted); text-decoration: line-through; }
+tr.external td { background: var(--halted-bg); color: var(--halted); font-weight: 600; text-decoration: none; }
+.sub { margin-top: 14px; }
+.sub h2 { display: flex; justify-content: space-between; }
+
+/* scorecard */
+.scorewrap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+td.off { color: var(--halted); } td.on { color: var(--active); font-weight: 600; }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: baseline; }
+svg text { font: 12px var(--sans); fill: var(--ink); }
+svg .lbl { fill: var(--muted); }
+
+@media (max-width: 900px) {
+  .pipeline { grid-template-columns: 1fr 1fr; gap: 16px; }
+  .lane::after { display: none; }
+  .cols, .scorewrap { grid-template-columns: 1fr; }
+  .ev { grid-template-columns: 78px 1fr; }
+  .ev .ag, .ev .tl, .ev .rs { grid-column: 2; }
+}
+@media (max-width: 520px) { .pipeline { grid-template-columns: 1fr; } header { padding: 10px; } main { padding: 10px; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">WardAIn<span>operator console</span></div>
+  <div id="mode" class="mode" title="Gateway enforcement mode"><i></i><b>WardAIn …</b></div>
+  <nav role="tablist" aria-label="Views">
+    <button role="tab" id="tab-live" aria-selected="true" data-view="live">Live</button>
+    <button role="tab" id="tab-score" aria-selected="false" data-view="score">Scorecard</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="tokenbar"><span id="conn" class="conn">connecting</span>
+    <button id="change-token" type="button" hidden>Change token</button></div>
+  <div class="halt-plate">
+    <button id="halt-all" class="halt-btn" type="button">HALT ALL</button>
+    <button id="resume-all" class="resume-btn" type="button">Resume all</button>
+  </div>
+</header>
+<div class="banner" role="status">Global halt is active. Every agent call is refused until you resume.</div>
+
+<main>
+  <section id="gate" class="panel" hidden>
+    <h2>Admin token</h2>
+    <div>Enter the gateway admin token to open the console. It stays in this browser tab only.</div>
+    <form id="gate-form">
+      <input id="token-input" type="password" autocomplete="off" aria-label="Admin token" placeholder="ADMIN_TOKEN">
+      <button type="submit">Connect</button>
+    </form>
+    <div class="err" id="gate-err" role="alert"></div>
+  </section>
+
+  <div id="live" class="view">
+    <section class="panel">
+      <h2>Agents</h2>
+      <div class="pipeline" id="pipeline"></div>
+    </section>
+    <div class="cols">
+      <section class="panel">
+        <h2>Event feed (newest first)</h2>
+        <div class="feed" id="feed" aria-live="off"></div>
+      </section>
+      <div>
+        <section class="panel">
+          <h2>Current run</h2>
+          <div id="run"></div>
+          <div class="sub"><h2>Payments</h2><div id="payments"></div></div>
+          <div class="sub"><h2>Outbox</h2><div id="outbox"></div></div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="score" class="view" hidden>
+    <div class="scorewrap">
+      <section class="panel"><h2>Resilience metrics</h2><div id="metrics"></div></section>
+      <section class="panel"><h2>Task success by scenario</h2>
+        <div class="legend"><span><i style="background:var(--halted)"></i>WardAIn OFF</span><span><i style="background:var(--active)"></i>WardAIn ON</span></div>
+        <div id="bars"></div></section>
+    </div>
+  </div>
+</main>
+
+<script>
+"use strict";
+const ROLES = ["planner", "retriever", "executor", "auditor"];
+const RED = new Set(["identity_failed", "replay_blocked", "agent_not_active", "policy_blocked", "guard_blocked",
+  "agent_halted", "global_halt"]);
+const AMBER = new Set(["anomaly_detected", "plan_deviation", "agent_quarantined", "rollback_started",
+  "compensation_applied", "rollback_completed", "tool_error", "circuit_open", "injection_sanitized"]);
+const ROUTINE = new Set(["call_received", "tool_called", "checkpoint_saved"]);
+const MAX_EVENTS = 300;
+
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const store = {
+  get() { try { return sessionStorage.getItem("wardain_admin_token") || ""; } catch (e) { return ""; } },
+  set(v) { try { sessionStorage.setItem("wardain_admin_token", v); } catch (e) { /* keep in memory only */ } },
+  clear() { try { sessionStorage.removeItem("wardain_admin_token"); } catch (e) { /* ignore */ } },
+};
+let token = store.get(), events = [], since = 0, timer = null, busy = false, lastConfig = {};
+
+class AuthError extends Error {}
+async function api(path, method = "GET") {
+  const r = await fetch(path, {method, headers: {"X-Admin-Token": token}});
+  if (r.status === 401) throw new AuthError("admin_auth");
+  if (!r.ok) { const e = new Error(path + " " + r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+
+function setConn(text, bad) { const c = $("conn"); c.textContent = text; c.classList.toggle("bad", !!bad); }
+function showGate(msg) {
+  stop(); $("gate").hidden = false; $("live").hidden = true; $("score").hidden = true;
+  $("change-token").hidden = true; $("gate-err").textContent = msg || ""; $("token-input").focus();
+}
+function showViews() { $("gate").hidden = true; $("change-token").hidden = false; selectView(currentView); }
+
+let currentView = "live";
+function selectView(name) {
+  currentView = name;
+  for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", String(b.dataset.view === name));
+  $("live").hidden = $("gate").hidden === false || name !== "live";
+  $("score").hidden = $("gate").hidden === false || name !== "score";
+  if (name === "score" && token) loadScorecard();
+}
+
+/* ---------- rendering ---------- */
+function renderMode(cfg) {
+  const on = cfg.mode !== "off", m = $("mode");
+  m.className = "mode " + (on ? "on" : "off");
+  m.querySelector("b").textContent = "WardAIn " + (on ? "ON" : "OFF");
+  const halted = !!cfg.global_halt;
+  document.body.classList.toggle("halted", halted);
+  $("resume-all").disabled = !halted;
+}
+
+function renderAgents(agents) {
+  const by = Object.fromEntries(ROLES.map((r) => [r, []]));
+  for (const a of agents) if (by[a.role]) by[a.role].push(a);
+  $("pipeline").innerHTML = ROLES.map((role) => {
+    const list = by[role].sort((x, y) => x.created_at - y.created_at);
+    const cards = list.map((a, i) => {
+      const s = a.status, done = s === "halted";
+      const btn = (act, label, off) => `<button type="button" data-agent="${esc(a.agent_id)}" data-act="${act}"${off ? " disabled" : ""}>${label}</button>`;
+      const replaced = list.length > 1 && i < list.length - 1 && s !== "active";
+      return `<div class="agent${replaced ? " old" : ""}" data-status="${esc(s)}">
+        <div class="top"><span class="id">${esc(a.agent_id)}</span><span class="st">${esc(s)}</span></div>
+        ${i > 0 ? '<div class="tag">replacement</div>' : ""}
+        <div class="ctl">${btn("pause", "Pause", s !== "active")}${btn("resume", "Resume", s === "active" || done)}
+        ${btn("quarantine", "Quarantine", s === "quarantined" || done)}${btn("halt", "Halt", done)}</div></div>`;
+    }).join("");
+    return `<div class="lane"><h3>${esc(role)}</h3>${cards || '<div class="empty">No agent registered</div>'}</div>`;
+  }).join("");
+}
+
+function fmtTime(ts) {
+  const d = new Date(ts * 1000), p = (n, w = 2) => String(n).padStart(w, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
+}
+function reasonOf(e) {
+  const d = e.detail || {};
+  if (d.reason) return d.reason;
+  if (d.rule) return "rule " + d.rule + (d.kind ? " (" + d.kind + ")" : "");
+  if (d.kind) return d.kind + (d.field ? ": " + d.field : "");
+  if (d.decision) return d.decision;
+  if (d.undo_tool) return d.undo_tool;
+  if (e.type === "tool_called" && d.status_code != null) return d.status_code + " in " + Math.round(d.latency_ms) + " ms";
+  if (e.type === "rollback_completed") return `${d.compensated} compensated`;
+  return "";
+}
+function renderFeed() {
+  if (!events.length) { $("feed").innerHTML = '<div class="nodata">No events yet. Start a scenario from the terminal or the Streamlit dashboard.</div>'; return; }
+  $("feed").innerHTML = events.map((e) => {
+    const cls = RED.has(e.type) ? "red" : AMBER.has(e.type) ? "amber" : e.type === "side_effect" ? "fx" : ROUTINE.has(e.type) ? "routine" : "";
+    return `<div class="ev ${cls}"><span class="t">${fmtTime(e.ts)}</span><span class="ty">${esc(e.type)}</span>
+      <span class="ag mono">${esc(e.agent_id || "")}</span><span class="tl mono">${esc(e.tool || "")}</span><span class="rs">${esc(reasonOf(e))}</span></div>`;
+  }).join("");
+}
+
+function renderRun(run) {
+  if (!run) { $("run").innerHTML = '<div class="nodata">No runs yet.</div>'; return; }
+  const secs = (run.ended_at || Date.now() / 1000) - run.started_at;
+  $("run").innerHTML = `<dl class="kv">
+    <dt>Status</dt><dd><span class="chip ${esc(run.status)}">${esc(run.status)}</span></dd>
+    <dt>Run</dt><dd class="mono">${esc(run.run_id)}</dd>
+    <dt>Scenario</dt><dd>${esc(run.scenario)} <span class="muted">(WardAIn ${esc(run.mode)})</span></dd>
+    <dt>Refund</dt><dd>${esc(run.customer_id)}, ${Number(run.amount).toFixed(2)} for ${esc(run.reason)}</dd>
+    <dt>Elapsed</dt><dd>${secs.toFixed(1)} s</dd></dl>`;
+}
+function table(cols, rows, rowCls) {
+  if (!rows.length) return '<div class="nodata">Nothing yet.</div>';
+  const head = cols.map((c) => `<th${c.num ? ' class="num"' : ""}>${esc(c.h)}</th>`).join("");
+  const body = rows.map((r) => `<tr class="${esc(rowCls(r))}">${cols.map((c) => `<td${c.num ? ' class="num"' : ""}>${esc(c.v(r))}</td>`).join("")}</tr>`).join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function renderTools(ts) {
+  const pay = (ts.payments || []).slice().sort((a, b) => b.created_at - a.created_at);
+  const done = pay.filter((p) => p.status === "completed").length;
+  $("payments").innerHTML = `<div class="muted" style="margin-bottom:4px">${done} completed, ${pay.length - done} reversed</div>` +
+    table([{h: "Payment", v: (r) => r.payment_id}, {h: "Customer", v: (r) => r.customer_id},
+      {h: "Amount", num: 1, v: (r) => Number(r.amount).toFixed(2)}, {h: "Status", v: (r) => r.status}],
+      pay.slice(0, 12), (r) => r.status);
+  const out = (ts.outbox || []).slice().sort((a, b) => b.created_at - a.created_at);
+  const ext = out.filter((o) => o.external && o.status === "sent").length;
+  $("outbox").innerHTML = `<div class="muted" style="margin-bottom:4px">${out.length} ${out.length === 1 ? "email" : "emails"}, ${ext} sent externally</div>` +
+    table([{h: "To", v: (r) => r.to_addr}, {h: "Subject", v: (r) => r.subject}, {h: "Status", v: (r) => r.status + (r.external ? " (external)" : "")}],
+      out.slice(0, 12), (r) => (r.external && r.status === "sent" ? "external " : "") + r.status);
+}
+
+/* ---------- scorecard ---------- */
+const fmt = (v) => (v == null ? "n/a" : (Math.round(v * 100) / 100).toString());
+async function loadScorecard() {
+  try {
+    const sc = await api("/admin/scorecard");
+    const rows = sc.metrics.filter((m) => m.metric !== "task_success_rate");
+    $("metrics").innerHTML = table([{h: "Metric", v: (r) => r.metric}, {h: "Scenario", v: (r) => r.scenario},
+      {h: "OFF", num: 1, v: (r) => fmt(r.off)}, {h: "ON", num: 1, v: (r) => fmt(r.on)}, {h: "Target", v: (r) => r.target}],
+      rows, () => "");
+    markScoreColumns();
+    $("bars").innerHTML = bars(sc.scenarios.slice().sort((a, b) => a.scenario.localeCompare(b.scenario)));
+  } catch (e) {
+    if (e instanceof AuthError) return showGate("Admin token rejected.");
+    const msg = e.status === 404 ? "No scorecard yet. Run scenarios with --mode both to generate results/scorecard.json." : "Could not load the scorecard.";
+    $("metrics").innerHTML = `<div class="nodata">${esc(msg)}</div>`; $("bars").innerHTML = "";
+  }
+}
+function markScoreColumns() {
+  for (const tr of document.querySelectorAll("#metrics tbody tr")) {
+    const n = tr.querySelectorAll("td.num"); if (n[0]) n[0].className = "num off"; if (n[1]) n[1].className = "num on";
+  }
+}
+function bars(list) {
+  if (!list.length) return '<div class="nodata">No scenario data.</div>';
+  const W = 420, L = 150, R = 44, rowH = 40, bw = W - L - R, H = list.length * rowH + 4;
+  const one = (v, y, color) => v == null ? `<text x="${L}" y="${y + 9}" class="lbl">n/a</text>` :
+    `<rect x="${L}" y="${y}" width="${Math.max(2, v * bw)}" height="10" rx="2" fill="${color}"/><text x="${L + v * bw + 6}" y="${y + 9}">${Math.round(v * 100)}%</text>`;
+  const g = list.map((s, i) => {
+    const y = i * rowH + 2;
+    return `<text x="0" y="${y + 15}" class="lbl">${esc(s.scenario)}</text>${one(s.task_success_rate_off, y, "var(--halted)")}${one(s.task_success_rate_on, y + 13, "var(--active)")}`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Task success rate per scenario, WardAIn off versus on">${g}</svg>`;
+}
+
+/* ---------- polling ---------- */
+async function tick() {
+  if (busy || !token) return; busy = true;
+  try {
+    const q = since ? `/admin/events?since_ts=${since}&limit=500` : "/admin/events?limit=200";
+    const [agents, runs, cfg, ts, evs] = await Promise.all([api("/admin/agents"), api("/admin/runs"), api("/admin/config"),
+      api("/admin/tool_state"), api(q)]);
+    lastConfig = cfg; renderMode(cfg); renderAgents(agents); renderRun(runs[0]); renderTools(ts);
+    if (evs.length) {
+      since = Math.max(since, ...evs.map((e) => e.ts));
+      events = evs.slice().reverse().concat(events).slice(0, MAX_EVENTS);
+    }
+    renderFeed(); setConn("live " + fmtTime(Date.now() / 1000).slice(0, 8));
+    if ($("gate").hidden === false) showViews();
+  } catch (e) {
+    if (e instanceof AuthError) { store.clear(); token = ""; showGate("Admin token rejected. Enter it again."); }
+    else setConn("gateway unreachable", true);
+  } finally { busy = false; }
+}
+function start() { stop(); tick(); timer = setInterval(tick, 1000); }
+function stop() { if (timer) clearInterval(timer); timer = null; }
+
+/* ---------- actions ---------- */
+async function act(path, label) {
+  try { await api(path, "POST"); } catch (e) {
+    if (e instanceof AuthError) return showGate("Admin token rejected.");
+    setConn(label + " failed", true);
+  }
+  tick();
+}
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-act]"); if (!b || b.disabled) return;
+  const id = b.dataset.agent, a = b.dataset.act;
+  if (a === "halt" && !confirm(`Halt ${id}? Its tokens are revoked and it cannot resume.`)) return;
+  act(`/control/${encodeURIComponent(id)}/${a}`, a);
+});
+$("halt-all").addEventListener("click", () => act("/control/halt_all", "halt all"));
+$("resume-all").addEventListener("click", () => act("/control/resume_all", "resume all"));
+for (const b of document.querySelectorAll("nav button")) b.addEventListener("click", () => selectView(b.dataset.view));
+$("change-token").addEventListener("click", () => { store.clear(); token = ""; showGate(""); });
+$("gate-form").addEventListener("submit", (e) => {
+  e.preventDefault(); const v = $("token-input").value.trim(); if (!v) return;
+  token = v; store.set(v); $("token-input").value = ""; since = 0; events = []; $("gate-err").textContent = ""; start();
+});
+
+if (token) { $("gate").hidden = true; $("change-token").hidden = false; start(); } else showGate("");
+</script>
+</body>
+</html>

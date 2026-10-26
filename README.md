@@ -105,6 +105,11 @@ Dashboard: http://localhost:8501, gateway: http://localhost:8000. Results are wr
 
 ## Demo script
 
+Optional: open the operator console at http://localhost:8000/ui (enter the `ADMIN_TOKEN` when asked).
+It shows the live agent graph, event feed, current run, tool state, HALT ALL and the scorecard. It is a
+single offline HTML file served by the gateway; scenarios are still started from the terminal or the
+Streamlit dashboard.
+
 1. **Baseline.** On the *Run scenario* page (or CLI) run `normal_run` with mode `on`:
    `.venv/bin/python -m scenarios.runner --scenario normal_run --mode on --runs 1`.
    One refund, one email, audit passes; the Live page shows the full event trail.

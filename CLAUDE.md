@@ -1147,6 +1147,26 @@ roadmap), docs/how-it-works.md (one section per component: what it does, which f
 scenario proves it, likely judge questions with answers). DoD: dashboard shows live events while
 `compromised_agent` runs with `--step-delay 1.0`; HALT ALL stops a running loop.
 
+**Phase 5c: operator console (UI polish; only after Phase 5 is committed).**
+A single self-contained `gateway/static/dashboard.html` (plain HTML/CSS/JS, no npm, no build step, no CDN,
+no web fonts; works offline), served by the gateway at `GET /ui` (no auth; it contains no secrets).
+- Backend additions only: `GET /ui` and `GET /admin/scorecard` (admin auth; returns
+  `RESULTS_DIR/scorecard.json`, 404 `{"error": "no_scorecard"}` if missing or unreadable).
+  `docker-compose.yml` mounts `./results:/app/results:ro` into the gateway. No other backend change.
+- The admin token is typed into the page and kept in `sessionStorage`; never hard-coded. A 401 clears it.
+- No "run scenario" button: the gateway never launches agents (network isolation). Scenarios start
+  from the terminal or the Streamlit dashboard. The Streamlit dashboard is unchanged.
+- Features: (1) live agent graph Planner → Retriever → Executor → Auditor coloured by status
+  (active/paused/quarantined/halted), replacement agents shown beside the quarantined one;
+  (2) event feed polling `GET /admin/events?since_ts=` every 1 s, newest first, red = blocked,
+  amber = anomaly/rollback/compensation, neutral = side_effect, with time/agent/tool/reason;
+  (3) current run panel (latest of `GET /admin/runs`) plus tool state (payments completed/reversed,
+  outbox with external emails highlighted); (4) per-agent pause/resume/quarantine/halt, HALT ALL,
+  Resume all; (5) scorecard view: metrics OFF vs ON and inline-SVG task-success bars from
+  `GET /admin/scorecard`; (6) "WardAIn ON/OFF" indicator from `GET /admin/config`.
+- Tests (`tests/test_ui.py`): `GET /ui` returns 200 `text/html`; `GET /admin/scorecard` needs admin auth.
+DoD: `pytest -q` passes; http://localhost:8000/ui shows live events while `compromised_agent` runs.
+
 **Phase 5b: LangGraph engine (optional; only after Phase 5 is committed).**
 1. Create `requirements-langgraph.txt` (section 3). Append to the Dockerfile, after the existing
    `RUN pip install ...` line: `COPY requirements-langgraph.txt .` and

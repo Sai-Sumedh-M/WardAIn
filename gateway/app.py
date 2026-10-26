@@ -1,7 +1,10 @@
 """WardAIn Gateway FastAPI app."""
+import json
+from pathlib import Path
+
 import httpx
 from fastapi import Body, FastAPI, Header
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from common.config import Settings, load_settings
 from common.envelope import RunRequest
@@ -15,6 +18,9 @@ from gateway.pipeline import decide_approval, expire_approval, handle_call
 from gateway.policy import PolicyEngine
 from gateway.store import GatewayStore
 from gateway.tools_client import ToolsClient
+
+
+DASHBOARD_HTML = Path(__file__).parent / "static" / "dashboard.html"
 
 
 def create_app(settings: Settings | None = None, tools_http: httpx.Client | None = None) -> FastAPI:
@@ -44,6 +50,10 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     @app.get("/health")
     def health() -> dict:
         return {"ok": True}
+
+    @app.get("/ui")
+    def ui() -> FileResponse:
+        return FileResponse(DASHBOARD_HTML, media_type="text/html")
 
     @app.post("/identity/register")
     def register(body: dict = Body(...), x_admin_token: str | None = Header(None)):
@@ -190,5 +200,14 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     @app.get("/admin/tool_state")
     def tool_state(x_admin_token: str | None = Header(None)):
         return st.tools.state() if admin_ok(x_admin_token) else denied()
+
+    @app.get("/admin/scorecard")
+    def scorecard(x_admin_token: str | None = Header(None)):
+        if not admin_ok(x_admin_token):
+            return denied()
+        try:
+            return json.loads((Path(settings.RESULTS_DIR) / "scorecard.json").read_text())
+        except (OSError, ValueError):
+            return JSONResponse({"error": "no_scorecard"}, status_code=404)
 
     return app

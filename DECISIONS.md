@@ -28,3 +28,8 @@
 - scripts/dev_local.sh: LLM_MODE_OVERRIDE (applied after sourcing .env) selects LLM_MODE; replaces the manual-start note above
 - scripts: real-model raw output is kept in data/real_model/ (gitignored) so results/ holds only mock numbers
 - scenarios/scorecard.py: kill_latency_ms is ON-only (OFF = n/a), since the kill-switch is not enforced in OFF mode
+- gateway/static/dashboard.html: single offline file (system fonts, no CDN), served at GET /ui without auth since it holds no secrets; every API call sends the token typed into the page (sessionStorage)
+- gateway/app.py: GET /admin/scorecard reads RESULTS_DIR/scorecard.json; unreadable or invalid JSON also gives 404 no_scorecard
+- docker-compose.yml: gateway mounts ./results read-only so the scorecard endpoint can read it; the gateway still writes nothing there
+- dashboard.html: routine events (call_received, tool_called, checkpoint_saved) are dimmed rather than hidden; per-agent Halt asks for confirmation, HALT ALL does not
+- dashboard.html: halted agents have all controls disabled (halt revokes their tokens, so resume would not help)

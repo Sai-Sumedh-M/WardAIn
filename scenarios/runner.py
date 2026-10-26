@@ -125,7 +125,8 @@ def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_del
     """Run one scenario iteration and return the raw result record."""
     name = sc["name"]
     admin.reset(mode=mode, scenario={"name": name, "chaos": sc.get("chaos") or [], "seed": 42 + i},
-                approval_mode="auto_reject", monitor_enabled=sc.get("monitor_enabled", True))
+                approval_mode="auto_reject", monitor_enabled=sc.get("monitor_enabled", True),
+                nvidia_guard=sc.get("nvidia_guard", "off"))
     agents: dict[str, AgentClient] = {}
     counters = {r: 0 for r in ROLES}
 

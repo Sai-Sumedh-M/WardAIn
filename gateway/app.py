@@ -12,6 +12,7 @@ from gateway.identity import IdentityError, IdentityService
 from gateway.chaos import ChaosEngine
 from gateway.killswitch import ACTIONS, KillSwitch
 from gateway.llm import LLMBackend
+from gateway.nvidia_guard import NvidiaGuard
 from gateway.monitor import CircuitBreaker, Monitor
 from gateway.recovery import Recovery
 from gateway.pipeline import decide_approval, expire_approval, handle_call
@@ -38,6 +39,8 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     st.circuit = CircuitBreaker(st.store, st.policy.cfg["circuit"])
     st.tools = ToolsClient(tools_http)
     st.llm = LLMBackend(settings, st.store)
+    st.nvidia_guard = NvidiaGuard(settings)
+    st.store.set_config("nvidia_guard", settings.NVIDIA_GUARD)
     st.recovery = Recovery(st.store, st.tools)
     st.monitor = Monitor(st.store, st.killswitch, st.recovery, st.policy)
 
@@ -155,6 +158,7 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
             if key in body:
                 st.store.set_config(key, body[key])
         st.store.set_config("global_halt", False)
+        st.store.set_config("nvidia_guard", body.get("nvidia_guard", settings.NVIDIA_GUARD))
         st.chaos.reset()
         st.circuit.reset()
         st.tools.reset()

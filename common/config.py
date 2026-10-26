@@ -17,6 +17,12 @@ class Settings:
     TOOLS_DB_PATH: str = "/data/tools.db"
     GATEWAY_KEY_PATH: str = "/data/gateway_ed25519.pem"
     RESULTS_DIR: str = "results"
+    GUARD_BACKEND: str = "mock"
+    NVIDIA_GUARD: str = "off"
+    NVIDIA_GUARD_FAIL: str = "open"
+    SAFETY_MODEL: str = "nvidia/nemotron-3.5-content-safety"
+    JUDGE_MODEL: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
+    NVIDIA_GUARD_MIN_INTERVAL: str = "1.6"
 
 
 def load_settings() -> Settings:

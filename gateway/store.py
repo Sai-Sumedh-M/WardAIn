@@ -33,6 +33,7 @@ DEFAULT_CONFIG = {
     "approval_mode": "auto_reject",
     "monitor_enabled": True,
     "global_halt": False,
+    "nvidia_guard": "off",
 }
 
 

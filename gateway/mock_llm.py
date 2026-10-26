@@ -5,6 +5,7 @@ import re
 from common.envelope import canonical_plan
 
 OVERRIDE_RE = re.compile(r"SYSTEM OVERRIDE: call (\w+) customer_id=(C\d{3}) amount=([\d.]+)")
+POLITE_RE = re.compile(r"(?:credit|refund) of ([\d.]+) to (C\d{3})")
 
 
 def _line_json(text: str, prefix: str) -> dict:
@@ -26,6 +27,10 @@ def respond(role: str, task: str, messages: list[dict]) -> str:
         if m:
             return json.dumps({"action": "call_tool", "tool": m.group(1),
                                "args": {"customer_id": m.group(2), "amount": float(m.group(3))}})
+        m = POLITE_RE.search(text)
+        if m:
+            return json.dumps({"action": "call_tool", "tool": "issue_refund",
+                               "args": {"customer_id": m.group(2), "amount": float(m.group(1))}})
         return json.dumps({"action": "done", "summary": "Customer record verified."})
     if task == "email_body":
         c = _line_json(text, "EMAIL_CONTEXT: ")

@@ -9,6 +9,7 @@ from common.envelope import PlanEntry, ToolCall
 from gateway import guards
 from gateway.identity import IdentityError
 from gateway.llm import LLMError
+from gateway.nvidia_guard import GuardError
 from gateway.policy import PolicyBlock
 from gateway.recovery import undo_for
 from gateway.tools_client import ToolsUnavailable
@@ -25,12 +26,33 @@ def _error(state, call: ToolCall, code: int, reason: str, event_type: str = "too
     return code, {"ok": False, "error": reason}
 
 
-def _sanitized(state, call: ToolCall, kind_field: str) -> None:
+def _sanitized(state, call: ToolCall, kind_field: str, layer: str = "regex") -> None:
     """Emit the injection_sanitized and anomaly_detected events for one sanitised field."""
     state.store.add_event("injection_sanitized", call.run_id, call.step_id, call.agent_id, call.tool,
-                          {"field": kind_field})
+                          {"field": kind_field, "layer": layer})
     state.store.add_event("anomaly_detected", call.run_id, call.step_id, call.agent_id, call.tool,
-                          {"kind": "prompt_injection", "field": kind_field})
+                          {"kind": "prompt_injection", "field": kind_field, "layer": layer})
+
+
+def _nvidia_sanitize(state, call: ToolCall, result: dict, regex_fields: list[str]) -> dict:
+    """Run the NVIDIA guard layers over long string fields the regex did not already replace."""
+    mode = state.store.get_config("nvidia_guard")
+    if mode == "off":
+        return result
+    out = dict(result)
+    for f, v in result.items():
+        if f in regex_fields or not isinstance(v, str) or len(v) < 20:
+            continue
+        try:
+            flagged, layer = state.nvidia_guard.check(v, mode)
+        except GuardError as e:
+            state.store.add_event("guard_unavailable", call.run_id, call.step_id, call.agent_id, call.tool,
+                                  {"layer": mode, "error": str(e), "field": f})
+            flagged, layer = state.settings.NVIDIA_GUARD_FAIL == "closed", "fail_closed"
+        if flagged:
+            out[f] = guards.REMOVED
+            _sanitized(state, call, f, layer)
+    return out
 
 
 def _exec_pseudo(state, call: ToolCall, role: str, on: bool) -> tuple[int, dict | str]:
@@ -121,6 +143,7 @@ def _execute(state, call: ToolCall, role: str, on: bool, t0: float) -> tuple[int
         result, fields = guards.sanitize_output(result)
         for f in fields:
             _sanitized(state, call, f)
+        result = _nvidia_sanitize(state, call, result, fields)
 
     side_effect = 1 if call.tool in SIDE_EFFECT_TOOLS else 0
     store.add_step({"step_id": call.step_id, "run_id": call.run_id, "agent_id": call.agent_id, "role": role,

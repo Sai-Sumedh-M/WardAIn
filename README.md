@@ -108,11 +108,18 @@ Official numbers come from `LLM_MODE=mock` (deterministic). The scorecard is reg
 
 ### Real model check (Phase 6)
 
-`normal_run --mode on --runs 3` with `LLM_MODE=nvidia` (`nvidia/nemotron-3.5-lightning-30b-a3b`,
-thinking disabled) completed 3/3 with EXPECT_OK holding. Each run used 1 documented fallback
-(`llm_fallbacks=1`): the model numbers `plan_index` from 1, so the planner output differs from the
-canonical plan and the canonical plan is used. The other LLM calls (`review_customer`, `email_body`)
-were parsed without fallback. The official scorecard above was rerun in mock mode.
+Run the stack against the NVIDIA model with the override (default stays mock):
+
+```bash
+LLM_MODE_OVERRIDE=nvidia bash scripts/dev_local.sh      # terminal 1
+LLM_MODE_OVERRIDE=nvidia source scripts/local_env.sh    # terminal 2 (runner)
+python -m scenarios.runner --scenario normal_run --mode on --runs 3
+```
+
+With `nvidia/nemotron-3.5-lightning-30b-a3b` (thinking disabled) `normal_run --mode on --runs 3`
+completed 3/3 with `llm_fallbacks=0` on every run. The planner prompt includes the canonical plan for an
+example request and states that `plan_index` starts at 0; validation against the canonical plan stays
+strict. The official scorecard above was rerun in mock mode (`--scenario all --mode both`).
 
 ## Roadmap (out of scope for this build)
 

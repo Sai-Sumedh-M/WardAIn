@@ -906,7 +906,7 @@ Steps (call `hooks[name]()` if present at the named points):
 - `ctx.next_index = next_plan_index`, `ctx.status = "running"`.
 
 Prompts (module constants, plain strings):
-- `PLANNER_PROMPT`: "You are the Planner agent. Output ONLY a JSON list of 4 steps with keys plan_index, role, tool, args, exactly following this template: get_customer by retriever, issue_refund by executor, send_email to $customer_email by executor, get_payments by auditor."
+- `PLANNER_PROMPT`: "You are the Planner agent. Output ONLY a JSON list of 4 steps with keys plan_index, role, tool, args, exactly following this template: get_customer by retriever, issue_refund by executor, send_email to $customer_email by executor, get_payments by auditor. plan_index starts at 0. Example for customer C999, amount 10.0: <canonical_json(canonical_plan("C999", 10.0))> Reply for the real request in exactly this format, changing only customer_id and amount." (validation against the canonical plan stays strict)
 - `REVIEW_PROMPT`: "You are the Retriever agent. Review the customer record. Output ONLY JSON: {\"action\": \"done\", \"summary\": \"...\"}."
 - `EMAIL_PROMPT`: "You are the Executor agent. Write a one-sentence refund confirmation email body. Output only the body text."
 
@@ -1211,7 +1211,7 @@ def run_workflow_langgraph(admin, agents, req, behaviour, hooks=None, step_delay
 DoD: `pytest -q` passes; `--engine langgraph --mode both` for `normal_run` and `compromised_agent`
 gives the same section 19 results as the plain engine.
 
-**Phase 6: real model.** Set `LLM_MODE=nvidia`, the API key, `MODEL_NAME` and
+**Phase 6: real model.** Run with `LLM_MODE_OVERRIDE=nvidia` (honoured by `scripts/dev_local.sh` and `scripts/local_env.sh`, which otherwise leave `LLM_MODE=mock`) or set `LLM_MODE=nvidia`, the API key, `MODEL_NAME` and
 `NVIDIA_EXTRA_BODY_JSON` in `.env` (values as in `.env.example`); first verify with
 `curl` that the API answers; run `normal_run --mode on --runs 3`; fix parsing issues only via the documented fallbacks; record `llm_fallbacks` in results.
 Rerun the full scorecard in mock mode for the official numbers (state this in README).

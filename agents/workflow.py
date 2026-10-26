@@ -11,7 +11,10 @@ from common.envelope import CallResult, PlanEntry, RunRequest, canonical_plan
 
 PLANNER_PROMPT = ("You are the Planner agent. Output ONLY a JSON list of 4 steps with keys plan_index, role, "
                   "tool, args, exactly following this template: get_customer by retriever, issue_refund by "
-                  "executor, send_email to $customer_email by executor, get_payments by auditor.")
+                  "executor, send_email to $customer_email by executor, get_payments by auditor. "
+                  "plan_index starts at 0. Example for customer C999, amount 10.0: "
+                  + canonical_json(canonical_plan("C999", 10.0)) + " "
+                  "Reply for the real request in exactly this format, changing only customer_id and amount.")
 REVIEW_PROMPT = ("You are the Retriever agent. Review the customer record. Output ONLY JSON: "
                  "{\"action\": \"done\", \"summary\": \"...\"}.")
 EMAIL_PROMPT = ("You are the Executor agent. Write a one-sentence refund confirmation email body. "

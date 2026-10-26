@@ -12,6 +12,8 @@ if [ -f .env ]; then
   source .env
   set +a
 fi
+# LLM_MODE_OVERRIDE (e.g. nvidia) wins over LLM_MODE from .env
+export LLM_MODE="${LLM_MODE_OVERRIDE:-${LLM_MODE:-mock}}"
 export GATEWAY_URL=http://localhost:8000
 export TOOLS_URL=http://localhost:8001
 export GATEWAY_DB_PATH=data/gateway.db

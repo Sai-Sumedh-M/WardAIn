@@ -24,3 +24,6 @@
 - dashboard/app.py: Run scenario launches the runner with sys.executable (the dashboard's own interpreter) instead of the literal "python"; engine radio offers only plain until Phase 5b
 - dashboard/app.py: inserts the repo root into sys.path so `.venv/bin/streamlit run dashboard/app.py` can import agents/common without PYTHONPATH
 - README.md: Phase 6 real-model run was done with the gateway started manually (LLM_MODE=nvidia), since dev_local.sh sources .env which sets mock
+- agents/workflow.py: PLANNER_PROMPT embeds the canonical plan for C999/10.0 and says plan_index starts at 0; strict comparison unchanged (real model now gives llm_fallbacks=0)
+- scripts/dev_local.sh: LLM_MODE_OVERRIDE (applied after sourcing .env) selects LLM_MODE; replaces the manual-start note above
+- scripts: real-model raw output is kept in data/real_model/ (gitignored) so results/ holds only mock numbers

@@ -139,6 +139,32 @@ tr.leak td { background: var(--halted-bg); color: var(--halted); font-weight: 60
 .sub { margin-top: 14px; }
 .sub h2 { display: flex; justify-content: space-between; }
 
+/* human review */
+.review-toggle { background: none; border: 1px solid currentColor; border-radius: 3px; padding: 4px 10px; font-weight: 600; color: inherit; }
+.review-toggle[aria-pressed="true"] { background: var(--quarantined); border-color: var(--quarantined); color: #fff; }
+.badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 9px; background: var(--halted);
+  color: #fff; font-size: 12px; font-weight: 700; text-align: center; }
+.badge[hidden] { display: none; }
+#decisions { border-color: var(--quarantined); border-width: 2px; }
+#decisions[hidden] { display: none; }
+.item { border: 1px solid var(--line); border-left: 6px solid var(--quarantined); background: var(--quarantined-bg);
+  border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; }
+.item:last-child { margin-bottom: 0; }
+.item .meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; margin-bottom: 6px; }
+.item .field { margin: 6px 0; }
+.item .quote { font-family: var(--mono); font-size: 12.5px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 3px; padding: 6px 8px; overflow-wrap: anywhere; }
+.item mark { background: var(--halted-bg); color: var(--halted); font-weight: 700; padding: 0 2px; }
+.verdicts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.verdict { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; }
+.verdict.unsafe { background: var(--halted-bg); color: var(--halted); }
+.verdict.safe { background: var(--active-bg); color: var(--active); }
+.item .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.item .row button { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 5px 12px; font-weight: 600; }
+.item .row button.block { border-color: var(--active); color: var(--active); }
+.item .row button.allow { border-color: var(--halted); color: var(--halted); }
+.item .count { margin-left: auto; font-family: var(--mono); font-size: 12.5px; }
+
 /* scorecard */
 .scorewrap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
 .raw { font: 11px var(--mono); color: var(--muted); }
@@ -166,6 +192,9 @@ svg .lbl { fill: var(--muted); }
     <button role="tab" id="tab-live" aria-selected="true" data-view="live">Live</button>
     <button role="tab" id="tab-score" aria-selected="false" data-view="score">Scorecard</button>
   </nav>
+  <button id="review-toggle" class="review-toggle" type="button" aria-pressed="false"
+    title="ON: ambiguous detections wait for a human decision (hitl=ambiguous, approvals manual)">Human review: OFF</button>
+  <span id="pending-badge" class="badge" hidden title="Items waiting for your decision">0</span>
   <div class="spacer"></div>
   <div class="tokenbar"><span id="conn" class="conn">connecting</span>
     <button id="change-token" type="button" hidden>Change token</button></div>
@@ -188,6 +217,10 @@ svg .lbl { fill: var(--muted); }
   </section>
 
   <div id="live" class="view">
+    <section class="panel" id="decisions" hidden>
+      <h2><span>Needs your decision</span><span class="muted" style="font-weight:400">unanswered data reviews are released sanitized after the timeout</span></h2>
+      <div id="decision-list"></div>
+    </section>
     <section class="panel">
       <h2>Agents</h2>
       <div class="pipeline" id="pipeline"></div>
@@ -226,7 +259,8 @@ const ROLES = ["planner", "retriever", "executor", "auditor"];
 const RED = new Set(["identity_failed", "replay_blocked", "agent_not_active", "policy_blocked", "guard_blocked",
   "agent_halted", "global_halt"]);
 const AMBER = new Set(["anomaly_detected", "plan_deviation", "agent_quarantined", "rollback_started",
-  "compensation_applied", "rollback_completed", "tool_error", "circuit_open", "injection_sanitized"]);
+  "compensation_applied", "rollback_completed", "tool_error", "circuit_open", "injection_sanitized",
+  "review_requested", "review_decided"]);
 const ROUTINE = new Set(["call_received", "tool_called", "checkpoint_saved"]);
 const MAX_EVENTS = 300;
 
@@ -240,8 +274,10 @@ const store = {
 let token = store.get(), events = [], since = 0, timer = null, busy = false, lastConfig = {};
 
 class AuthError extends Error {}
-async function api(path, method = "GET") {
-  const r = await fetch(path, {method, headers: {"X-Admin-Token": token}});
+async function api(path, method = "GET", body) {
+  const headers = {"X-Admin-Token": token};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const r = await fetch(path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
   if (r.status === 401) throw new AuthError("admin_auth");
   if (!r.ok) { const e = new Error(path + " " + r.status); e.status = r.status; throw e; }
   return r.json();
@@ -271,6 +307,48 @@ function renderMode(cfg) {
   const halted = !!cfg.global_halt;
   document.body.classList.toggle("halted", halted);
   $("resume-all").disabled = !halted;
+  const rv = cfg.hitl === "ambiguous";
+  $("review-toggle").setAttribute("aria-pressed", String(rv));
+  $("review-toggle").textContent = "Human review: " + (rv ? "ON" : "OFF");
+}
+
+/* ---------- needs your decision ---------- */
+const SUSPICIOUS = /(refund|credit|transfer|send|e-?mail|balance|bypass|approve|evil\.com|C\d{3}|forget|ignore|override|instruct\w*|AI|agent|assistant|admin|system)/gi;
+const REVIEW_TIMEOUT = 60, APPROVAL_TIMEOUT = 30;
+let pending = [], pendingKey = "";
+const mark = (text) => esc(text).replace(SUSPICIOUS, "<mark>$1</mark>");
+const left = (ap) => Math.max(0, Math.ceil(ap.created_at + (ap.kind === "data_review" ? REVIEW_TIMEOUT : APPROVAL_TIMEOUT) - Date.now() / 1000));
+function decisionCard(ap) {
+  const meta = `<div class="meta"><span>Agent <b class="mono">${esc(ap.agent_id)}</b></span><span>Tool <b class="mono">${esc(ap.tool)}</b></span>
+    <span>Run <span class="mono">${esc(ap.run_id)}</span></span></div>`;
+  const count = `<span class="count" data-created="${ap.created_at}" data-kind="${esc(ap.kind)}"></span>`;
+  const id = esc(ap.approval_id);
+  if (ap.kind === "data_review") {
+    const fields = ((ap.payload || {}).fields || []).map((f) => {
+      const bySafety = f.flagged_by === "nvidia_safety", byJudge = f.flagged_by === "nvidia_judge";
+      return `<div class="field"><div class="muted">Field <span class="mono">${esc(f.field)}</span> (tool output, untrusted data)</div>
+        <div class="quote">${mark(f.text)}</div><div class="verdicts">
+        <span class="verdict ${bySafety ? "unsafe" : "safe"}">NVIDIA safety: ${bySafety ? "unsafe" : "safe"}</span>
+        <span class="verdict ${byJudge ? "unsafe" : "safe"}">Nemotron judge: ${byJudge ? "unsafe" : "safe"}</span></div></div>`;
+    }).join("");
+    return `<div class="item" data-id="${id}">${meta}${fields}<div class="row">
+      <button type="button" class="block" data-ap="${id}" data-d="reject">Block (sanitize)</button>
+      <button type="button" class="allow" data-ap="${id}" data-d="approve" data-confirm="1">Allow original</button>${count}</div></div>`;
+  }
+  const args = esc(JSON.stringify((ap.envelope || {}).args || {}));
+  return `<div class="item" data-id="${id}">${meta}<div class="quote">${esc(ap.tool)} ${args}</div><div class="row">
+    <button type="button" class="block" data-ap="${id}" data-d="approve">Approve</button>
+    <button type="button" class="allow" data-ap="${id}" data-d="reject">Reject</button>${count}</div></div>`;
+}
+function renderDecisions() {
+  const key = pending.map((a) => a.approval_id).join(",");
+  $("decisions").hidden = !pending.length;
+  const badge = $("pending-badge"); badge.hidden = !pending.length; badge.textContent = pending.length;
+  if (key !== pendingKey) { pendingKey = key; $("decision-list").innerHTML = pending.map(decisionCard).join(""); }
+  for (const c of document.querySelectorAll("#decision-list .count")) {
+    const ap = pending.find((a) => String(a.created_at) === c.dataset.created);
+    if (ap) c.textContent = "auto-" + (ap.kind === "data_review" ? "blocks" : "rejects") + " in " + left(ap) + " s";
+  }
 }
 
 function renderAgents(agents) {
@@ -302,6 +380,8 @@ function reasonOf(e) {
   if (d.rule) return "rule " + d.rule + (d.kind ? " (" + d.kind + ")" : "");
   if (d.kind) return d.kind + (d.field ? ": " + d.field : "") + (d.layer ? " [" + d.layer + "]" : "");
   if (e.type === "injection_sanitized" && d.layer) return (d.field ? d.field + " " : "") + "[" + d.layer + "]";
+  if (e.type === "review_requested" && d.fields) return d.fields.map((f) => f.field + " (" + f.flagged_by + ")").join(", ");
+  if (e.type === "review_decided") return d.decision + " by " + d.by;
   if (d.decision) return d.decision;
   if (d.undo_tool) return d.undo_tool;
   if (e.type === "tool_called" && d.status_code != null) return d.status_code + " in " + Math.round(d.latency_ms) + " ms";
@@ -390,6 +470,14 @@ async function loadScorecard() {
   }
 }
 const COMBOS = ["regex", "regex+safety", "regex+judge", "regex+safety+judge"];
+function escalationLine(r) {
+  const items = (r.items || []).filter((i) => ["seed", "generated", "benign"].includes(i.source));
+  const tri = (i) => (i.regex || (i.safety && i.judge)) ? "block" : (!!i.safety !== !!i.judge) ? "esc" : "allow";
+  const att = items.filter((i) => i.source !== "benign");
+  if (!items.length || !att.length) return "";
+  const esc_ = items.filter((i) => tri(i) === "esc").length, caught = att.filter((i) => tri(i) !== "allow").length;
+  return `<p><b>${pct(esc_ / items.length)}</b> of items would go to a human; human review raises attack coverage to <b>${pct(caught / att.length)}</b>.</p>`;
+}
 function redteamPanel(r) {
   const c = r.counts || {}, W = 420, L = 130, R = 44, bw = W - L - R, rowH = 44;
   const bar = (v, y, color) => `<rect x="${L}" y="${y}" width="${Math.max(2, v * bw)}" height="10" rx="2" fill="${color}"/><text x="${L + v * bw + 6}" y="${y + 9}">${pct(v)}</text>`;
@@ -400,6 +488,7 @@ function redteamPanel(r) {
   return `<div class="legend"><span><i style="background:var(--active)"></i>Detection rate</span><span><i style="background:var(--halted)"></i>False-positive rate</span></div>
     <svg viewBox="0 0 ${W} ${COMBOS.length * rowH + 4}" width="100%" role="img" aria-label="Red-team detection and false-positive rate per guard layer combination">${rows}</svg>
     <p class="muted">Backend: ${esc(r.backend)}. Attacks: ${esc(c.attacks)} (${esc(c.seed)} seed, ${esc(c.generated)} generated), ${esc(c.ambiguous)} ambiguous excluded, ${esc(c.benign)} benign.</p>
+    ${escalationLine(r)}
     <p class="muted">Detection is one layer: actions that slip past it are still stopped by role, scope and recipient rules, plan-deviation detection and rollback.</p>`;
 }
 async function loadRedteam() {
@@ -426,9 +515,9 @@ async function tick() {
   if (busy || !token) return; busy = true;
   try {
     const q = since ? `/admin/events?since_ts=${since}&limit=500` : "/admin/events?limit=200";
-    const [agents, runs, cfg, ts, evs] = await Promise.all([api("/admin/agents"), api("/admin/runs"), api("/admin/config"),
-      api("/admin/tool_state"), api(q)]);
-    lastConfig = cfg; renderMode(cfg); renderAgents(agents); renderRun(runs[0]); renderTools(ts, runs[0]);
+    const [agents, runs, cfg, ts, evs, aps] = await Promise.all([api("/admin/agents"), api("/admin/runs"), api("/admin/config"),
+      api("/admin/tool_state"), api(q), api("/admin/approvals")]);
+    lastConfig = cfg; pending = aps; renderDecisions(); renderMode(cfg); renderAgents(agents); renderRun(runs[0]); renderTools(ts, runs[0]);
     if (evs.length) {
       since = Math.max(since, ...evs.map((e) => e.ts));
       events = evs.slice().reverse().concat(events).slice(0, MAX_EVENTS);
@@ -456,6 +545,18 @@ document.addEventListener("click", (ev) => {
   const id = b.dataset.agent, a = b.dataset.act;
   if (a === "halt" && !confirm(`Halt ${id}? Its tokens are revoked and it cannot resume.`)) return;
   act(`/control/${encodeURIComponent(id)}/${a}`, a);
+});
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-ap]"); if (!b || b.disabled) return;
+  if (b.dataset.confirm && !confirm("Allow the original text through to the agent? It may contain an injected instruction.")) return;
+  b.disabled = true;
+  act(`/admin/approvals/${encodeURIComponent(b.dataset.ap)}/${b.dataset.d}`, "decision");
+});
+$("review-toggle").addEventListener("click", async () => {
+  const on = lastConfig.hitl !== "ambiguous";
+  try { await api("/admin/config", "POST", on ? {hitl: "ambiguous", approval_mode: "manual"} : {hitl: "off", approval_mode: "auto_reject"}); }
+  catch (e) { if (e instanceof AuthError) return showGate("Admin token rejected."); setConn("toggle failed", true); }
+  tick();
 });
 $("important").addEventListener("change", renderFeed);
 $("halt-all").addEventListener("click", () => act("/control/halt_all", "halt all"));

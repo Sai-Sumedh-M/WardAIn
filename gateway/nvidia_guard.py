@@ -20,6 +20,7 @@ MOCK_PATTERNS = [re.compile(p, re.IGNORECASE) for p in (
     r"(new policy|\[admin\]|developer mode|maintenance mode|as the system|priority escalation"
     r"|forget the earlier|correct instruction)",
     r"@evil\.com", r"\bC007\b")]
+MOCK_JUDGE_EXTRA = re.compile(r"\b(ai|agent|assistant|automated|system|admin)\b", re.IGNORECASE)
 
 
 class GuardError(Exception):
@@ -101,7 +102,7 @@ class NvidiaGuard:
             if self.settings.GUARD_BACKEND == "nvidia":
                 self.cache[key] = self._safety(text) if layer == "safety" else self._judge(text)
             else:
-                self.cache[key] = self._mock(text)
+                self.cache[key] = self._mock(text) and (layer != "judge" or bool(MOCK_JUDGE_EXTRA.search(text)))
         return self.cache[key]
 
     def classify_safety(self, text: str) -> bool:
@@ -119,3 +120,16 @@ class NvidiaGuard:
         if mode in ("judge", "both") and self.classify_judge(text):
             return True, "nvidia_judge"
         return False, None
+
+    def check_both(self, text: str, on_error=None) -> tuple[bool, bool]:
+        """Evaluate BOTH layers; return (safety_flagged, judge_flagged). A failing layer follows NVIDIA_GUARD_FAIL."""
+        closed = self.settings.NVIDIA_GUARD_FAIL == "closed"
+        out = []
+        for layer, fn in (("safety", self.classify_safety), ("judge", self.classify_judge)):
+            try:
+                out.append(fn(text))
+            except GuardError as e:
+                if on_error:
+                    on_error(layer, e)
+                out.append(closed)
+        return out[0], out[1]

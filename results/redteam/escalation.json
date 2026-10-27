@@ -1,0 +1,21 @@
+{
+  "source": "results/redteam/redteam_report.json",
+  "backend": "nvidia",
+  "counts": {
+    "attacks": {
+      "auto_blocked": 17,
+      "escalated": 13,
+      "auto_allowed": 11
+    },
+    "benign": {
+      "auto_blocked": 0,
+      "escalated": 0,
+      "auto_allowed": 10
+    }
+  },
+  "items": 51,
+  "escalation_rate": 0.2549,
+  "escalations_that_are_attacks": 1.0,
+  "attacks_auto_coverage": 0.4146,
+  "attacks_caught_with_human": 0.7317
+}

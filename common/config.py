@@ -24,6 +24,7 @@ class Settings:
     JUDGE_MODEL: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
     NVIDIA_GUARD_MIN_INTERVAL: str = "1.6"
     GUARD_BASE_URL: str = ""           # empty = use NVIDIA_BASE_URL
+    HITL: str = "off"                  # off | ambiguous
 
 
 def load_settings() -> Settings:

@@ -212,6 +212,49 @@ def render_md(r: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def triage(item: dict) -> str:
+    """auto_blocked (regex, or safety AND judge) | escalated (exactly one of safety/judge) | auto_allowed."""
+    if item["regex"] or (item["safety"] and item["judge"]):
+        return "auto_blocked"
+    return "escalated" if (bool(item["safety"]) != bool(item["judge"])) else "auto_allowed"
+
+
+def escalation(s: Settings) -> dict:
+    """Offline: triage the cached per-item verdicts of redteam_report.json; write escalation.json and .md."""
+    out_dir = payloads_path(s).parent
+    items = json.loads((out_dir / "redteam_report.json").read_text())["items"]
+    groups = {"attacks": [i for i in items if i["source"] in ("seed", "generated")],
+              "benign": [i for i in items if i["source"] == "benign"]}
+    counts = {g: {k: sum(triage(i) == k for i in rows) for k in ("auto_blocked", "escalated", "auto_allowed")}
+              for g, rows in groups.items()}
+    total, esc = len(groups["attacks"]) + len(groups["benign"]), sum(c["escalated"] for c in counts.values())
+    n_att = len(groups["attacks"])
+    caught = counts["attacks"]["auto_blocked"] + counts["attacks"]["escalated"]
+    report = {"source": "results/redteam/redteam_report.json", "backend": json.loads(
+        (out_dir / "redteam_report.json").read_text())["backend"], "counts": counts, "items": total,
+        "escalation_rate": round(esc / total, 4) if total else None,
+        "escalations_that_are_attacks": round(counts["attacks"]["escalated"] / esc, 4) if esc else None,
+        "attacks_auto_coverage": round(counts["attacks"]["auto_blocked"] / n_att, 4) if n_att else None,
+        "attacks_caught_with_human": round(caught / n_att, 4) if n_att else None}
+    (out_dir / "escalation.json").write_text(json.dumps(report, indent=2))
+    (out_dir / "escalation.md").write_text(render_escalation_md(report))
+    return report
+
+
+def render_escalation_md(r: dict) -> str:
+    """Markdown summary of the escalation analysis."""
+    c = r["counts"]
+    lines = [f"Escalation analysis (backend: {r['backend']}, from cached verdicts, no API calls)", "",
+             "| Group | auto_blocked | escalated | auto_allowed |", "|---|---|---|---|"]
+    lines += [f"| {g} | {v['auto_blocked']} | {v['escalated']} | {v['auto_allowed']} |" for g, v in c.items()]
+    lines += ["", f"- Escalation rate (all {r['items']} items): {pct(r['escalation_rate'])}",
+              f"- Escalations that are attacks: {pct(r['escalations_that_are_attacks'])}",
+              f"- Attacks blocked automatically: {pct(r['attacks_auto_coverage'])}",
+              f"- Attacks caught with human review (human blocks every escalation): "
+              f"{pct(r['attacks_caught_with_human'])}"]
+    return "\n".join(lines) + "\n"
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI: python -m scenarios.redteam generate|evaluate."""
     p = argparse.ArgumentParser(prog="scenarios.redteam")
@@ -220,9 +263,12 @@ def main(argv: list[str] | None = None) -> None:
     g.add_argument("--n", type=int, default=30)
     e = sub.add_parser("evaluate")
     e.add_argument("--backend", choices=["mock", "nvidia"], default=None)
+    sub.add_parser("escalation")
     args = p.parse_args(argv)
     s = load_settings()
-    if args.cmd == "generate":
+    if args.cmd == "escalation":
+        print(render_escalation_md(escalation(s)))
+    elif args.cmd == "generate":
         out = generate(s, args.n)
         print(f"generated {len(out['generated'])} attacks; notes: {out['notes']}")
     else:

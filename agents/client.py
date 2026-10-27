@@ -57,8 +57,8 @@ class AgentClient:
         return self.http.post("/call", headers=headers, content=body)
 
     def _poll_approval(self, approval_id: str) -> CallResult:
-        """Poll GET /approvals/{id} every 0.2 s (max 35 s) until decided."""
-        deadline = time.time() + 35
+        """Poll GET /approvals/{id} every 0.2 s (max 65 s) until decided."""
+        deadline = time.time() + 65
         data: dict = {}
         while time.time() < deadline:
             self.ensure_token()

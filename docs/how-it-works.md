@@ -175,6 +175,17 @@ Caveats: one run per attack and mode, one model, a small sample.
 **Q: Is the compliant prompt cheating?** It is the worst case for the gateway: an agent that obeys any instruction in data. A model that resists would make OFF look better; the ON result does not depend on it.
 **Q: How do you know a quarantine belongs to a given run?** `agent_quarantined` events written by the monitor carry the run's `run_id`; manual console actions leave it null.
 
+## Human-on-the-loop review (Phase 9)
+
+**What it does:** when the two NVIDIA layers disagree about a field (exactly one flags it), the gateway does not guess. With config `hitl=ambiguous` it parks the tool result in a `data_review` approval (`approvals.kind`, `payload_json` holds the original and sanitized results and the flagged fields) and emits `review_requested`. A human decides in the console: Block releases the sanitized record, Allow original releases the raw one. No answer within `review_timeout_seconds` (60) releases the sanitized record. Both layers flagging still removes the field automatically (`layer: nvidia_both`), and neither flagging keeps it. The step is recorded once with the released result; `review_decided` carries `decision` and `by` (`human|auto|timeout`).
+**Files:** `gateway/pipeline.py` (`_nvidia_review`, `_request_review`, `_decide_review`), `gateway/nvidia_guard.py` (`check_both`), `gateway/static/dashboard.html`, `scenarios/redteam.py` (`escalation`). **Scenario:** `prompt_injection_ambiguous`. **Tests:** `tests/test_hitl.py`.
+**Numbers:** from the cached red-team verdicts, 25.5% of items (13 of 51, all attacks) would be escalated; automatic coverage of attacks is 41.5%, rising to 73.2% if the human blocks each escalation (`results/redteam/escalation.md`).
+
+**Q: Why not let the LLM judge decide ambiguous cases?** The two layers are the decision makers and they disagree; breaking the tie with a third model call adds latency and another thing that can be fooled. A person sees the text and the two verdicts.
+**Q: What if no human is watching?** The default is safe: after 60 s the sanitized record is released and the run continues. A wrong block costs one missing note field, not a leaked action.
+**Q: Doesn't that make the agent slow?** Only for the 25% of items that are escalated, and only while a human is expected to be present; clear attacks and clear benign data never wait.
+**Q: Does a human approval bypass the other controls?** No. Allowing the original only releases the data; policy, scope, recipient and guard checks still apply to whatever the agent then tries to do.
+
 ## Dashboard
 
 Streamlit app over the admin API: live agent status and controls, event stream, approvals, tool state,

@@ -59,3 +59,8 @@ class PolicyEngine:
     def approval_timeout(self) -> float:
         """Seconds before a pending approval is rejected."""
         return float(self.cfg["approval_timeout_seconds"])
+
+    @property
+    def review_timeout(self) -> float:
+        """Seconds before a pending data review is released sanitized."""
+        return float(self.cfg["review_timeout_seconds"])

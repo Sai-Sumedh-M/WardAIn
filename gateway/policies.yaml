@@ -9,6 +9,7 @@ internal_email_domain: company.com
 high_risk:
   issue_refund_amount_gt: 500
 approval_timeout_seconds: 30
+review_timeout_seconds: 60
 limits:
   loop_threshold: 3
   max_refunds_per_run: 3

@@ -32,12 +32,12 @@ class AdminClient:
         return _json(self.http.post(path, headers=self.headers, json=body or {}))
 
     def reset(self, mode: str, scenario: dict, approval_mode: str, monitor_enabled: bool,
-              nvidia_guard: str = "off") -> dict:
+              nvidia_guard: str = "off", hitl: str = "off") -> dict:
         """Reset gateway and tools state."""
         return self._post("/admin/reset", {"mode": mode, "scenario": scenario,
                                            "approval_mode": approval_mode,
                                            "monitor_enabled": monitor_enabled,
-                                           "nvidia_guard": nvidia_guard})
+                                           "nvidia_guard": nvidia_guard, "hitl": hitl})
 
     def create_run(self, req: RunRequest) -> dict:
         """Register a run."""

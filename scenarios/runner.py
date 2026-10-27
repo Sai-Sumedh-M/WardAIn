@@ -121,12 +121,12 @@ def get_engine(engine: str):
 
 
 def run_once(admin: AdminClient, settings, sc: dict, mode: str, i: int, step_delay: float,
-             engine: str = "plain") -> dict:
+             engine: str = "plain", approval_mode: str = "auto_reject", hitl: str = "") -> dict:
     """Run one scenario iteration and return the raw result record."""
     name = sc["name"]
     admin.reset(mode=mode, scenario={"name": name, "chaos": sc.get("chaos") or [], "seed": 42 + i},
-                approval_mode="auto_reject", monitor_enabled=sc.get("monitor_enabled", True),
-                nvidia_guard=sc.get("nvidia_guard", "off"))
+                approval_mode=approval_mode, monitor_enabled=sc.get("monitor_enabled", True),
+                nvidia_guard=sc.get("nvidia_guard", "off"), hitl=hitl or sc.get("hitl", "off"))
     agents: dict[str, AgentClient] = {}
     counters = {r: 0 for r in ROLES}
 
@@ -191,6 +191,17 @@ def raw_dir_for(settings, demo: bool) -> Path:
     return DEMO_DIR if demo else Path(settings.RESULTS_DIR) / "raw"
 
 
+def demo_review_settings(admin: AdminClient) -> tuple[str, str]:
+    """For --demo: keep the console's Human review toggle (manual approvals + hitl) across the reset."""
+    try:
+        cfg = admin.get_config()
+    except Exception:
+        return "auto_reject", ""
+    if cfg.get("approval_mode") == "manual" and cfg.get("hitl") == "ambiguous":
+        return "manual", "ambiguous"
+    return "auto_reject", ""
+
+
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     ap = argparse.ArgumentParser()
@@ -205,6 +216,7 @@ def main(argv: list[str] | None = None) -> None:
     settings = load_settings()
     wait_for_gateway(settings.GATEWAY_URL)
     admin = AdminClient(settings.GATEWAY_URL, settings.ADMIN_TOKEN)
+    console = demo_review_settings(admin) if args.demo else ("auto_reject", "")
     names = all_scenarios() if args.scenario == "all" else [args.scenario]
     modes = ["off", "on"] if args.mode == "both" else [args.mode]
     raw_dir = raw_dir_for(settings, args.demo)
@@ -217,7 +229,7 @@ def main(argv: list[str] | None = None) -> None:
             passed = 0
             runs = args.runs or sc["runs"]
             for i in range(runs):
-                rec = run_once(admin, settings, sc, mode, i, args.step_delay, args.engine)
+                rec = run_once(admin, settings, sc, mode, i, args.step_delay, args.engine, *console)
                 passed += rec["expect_passed"]
                 with out.open("a") as f:
                     f.write(json.dumps(rec) + "\n")

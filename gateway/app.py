@@ -41,6 +41,7 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     st.llm = LLMBackend(settings, st.store)
     st.nvidia_guard = NvidiaGuard(settings)
     st.store.set_config("nvidia_guard", settings.NVIDIA_GUARD)
+    st.store.set_config("hitl", settings.HITL)
     st.recovery = Recovery(st.store, st.tools)
     st.monitor = Monitor(st.store, st.killswitch, st.recovery, st.policy)
 
@@ -161,6 +162,7 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
                 st.store.set_config(key, body[key])
         st.store.set_config("global_halt", False)
         st.store.set_config("nvidia_guard", body.get("nvidia_guard", settings.NVIDIA_GUARD))
+        st.store.set_config("hitl", body.get("hitl", settings.HITL))
         st.chaos.reset()
         st.circuit.reset()
         st.tools.reset()

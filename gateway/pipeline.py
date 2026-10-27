@@ -55,6 +55,27 @@ def _nvidia_sanitize(state, call: ToolCall, result: dict, regex_fields: list[str
     return out
 
 
+def _nvidia_review(state, call: ToolCall, result: dict, regex_fields: list[str]) -> tuple[dict, list[dict]]:
+    """HITL variant: both layers vote; both flag -> replace, exactly one -> ambiguous (kept in result)."""
+    mode = state.store.get_config("nvidia_guard")
+    out, ambiguous = dict(result), []
+
+    def unavailable(layer: str, error: Exception, field: str) -> None:
+        state.store.add_event("guard_unavailable", call.run_id, call.step_id, call.agent_id, call.tool,
+                              {"layer": layer, "error": str(error), "field": field})
+
+    for f, v in result.items():
+        if f in regex_fields or not isinstance(v, str) or len(v) < 20:
+            continue
+        s, j = state.nvidia_guard.check_both(v, lambda layer, e, f=f: unavailable(layer, e, f))
+        if s and j:
+            out[f] = guards.REMOVED
+            _sanitized(state, call, f, "nvidia_both")
+        elif s or j:
+            ambiguous.append({"field": f, "text": v, "flagged_by": "nvidia_safety" if s else "nvidia_judge"})
+    return out, ambiguous
+
+
 def _exec_pseudo(state, call: ToolCall, role: str, on: bool) -> tuple[int, dict | str]:
     """Run llm / submit_plan / report_result; return (status, raw_text or error body)."""
     if call.tool == "llm":
@@ -143,8 +164,19 @@ def _execute(state, call: ToolCall, role: str, on: bool, t0: float) -> tuple[int
         result, fields = guards.sanitize_output(result)
         for f in fields:
             _sanitized(state, call, f)
-        result = _nvidia_sanitize(state, call, result, fields)
+        if state.store.get_config("hitl") == "ambiguous" and state.store.get_config("nvidia_guard") != "off":
+            result, ambiguous = _nvidia_review(state, call, result, fields)
+            if ambiguous:
+                return _request_review(state, call, result, ambiguous)
+        else:
+            result = _nvidia_sanitize(state, call, result, fields)
+    return _finish(state, call, role, on, t0, result, timeout_after_commit)
 
+
+def _finish(state, call: ToolCall, role: str, on: bool, t0: float, result: dict,
+            timeout_after_commit: bool) -> tuple[int, dict]:
+    """Steps 13-18: record the step, deviation check, idempotency, timeout_after_commit."""
+    store = state.store
     side_effect = 1 if call.tool in SIDE_EFFECT_TOOLS else 0
     store.add_step({"step_id": call.step_id, "run_id": call.run_id, "agent_id": call.agent_id, "role": role,
                     "tool": call.tool, "args": call.args, "result": result,
@@ -170,13 +202,51 @@ def _execute(state, call: ToolCall, role: str, on: bool, t0: float) -> tuple[int
     return 200, response
 
 
-def decide_approval(state, approval_id: str, decision: str, reason: str = "approval_rejected") -> None:
+def _decide_review(state, ap: dict, call: ToolCall, decision: str, reason: str, by: str) -> None:
+    """Release the original (approve) or sanitized (reject / timeout) result of a data review."""
+    store, payload = state.store, ap["payload"]
+    release = "release_original" if decision == "approve" else "release_sanitized"
+    if release == "release_sanitized":
+        layer = "review_timeout" if by == "timeout" else "human_review"
+        for item in payload["fields"]:
+            store.add_event("injection_sanitized", call.run_id, call.step_id, call.agent_id, call.tool,
+                            {"field": item["field"], "layer": layer})
+    store.add_event("review_decided", call.run_id, call.step_id, call.agent_id, call.tool,
+                    {"decision": release, "by": by, "approval_id": ap["approval_id"]})
+    result = payload["result_original"] if decision == "approve" else payload["result_sanitized"]
+    agent = store.get_agent(call.agent_id)
+    code, resp = _finish(state, call, agent["role"] if agent else "unknown", True, time.time(), result, False)
+    store.set_approval_response(ap["approval_id"], code, resp)
+
+
+def _request_review(state, call: ToolCall, result: dict, ambiguous: list[dict]) -> tuple[int, dict]:
+    """Escalate ambiguous fields to a human (data_review approval); auto modes decide immediately."""
+    store = state.store
+    approval_id = uuid.uuid4().hex[:12]
+    sanitized = {**result, **{a["field"]: guards.REMOVED for a in ambiguous}}
+    store.add_approval(approval_id, call.model_dump(), "data_review",
+                       {"result_original": result, "result_sanitized": sanitized, "fields": ambiguous})
+    store.add_event("review_requested", call.run_id, call.step_id, call.agent_id, call.tool,
+                    {"approval_id": approval_id,
+                     "fields": [{"field": a["field"], "flagged_by": a["flagged_by"]} for a in ambiguous]})
+    mode = store.get_config("approval_mode")
+    if mode not in ("auto_approve", "auto_reject"):
+        return 202, {"ok": False, "pending_approval": True, "approval_id": approval_id}
+    decide_approval(state, approval_id, "approve" if mode == "auto_approve" else "reject", by="auto")
+    ap = store.get_approval(approval_id)
+    return ap["status_code"], ap["response"]
+
+
+def decide_approval(state, approval_id: str, decision: str, reason: str = "approval_rejected",
+                    by: str = "human") -> None:
     """Approve (execute the stored call) or reject a pending approval; no-op if not pending."""
     store = state.store
     if not store.claim_approval(approval_id, "approved" if decision == "approve" else "rejected"):
         return
     ap = store.get_approval(approval_id)
     call = ToolCall(**ap["envelope"])
+    if ap["kind"] == "data_review":
+        return _decide_review(state, ap, call, decision, reason, by)
     if decision == "approve":
         store.add_event("approval_decided", call.run_id, call.step_id, call.agent_id, call.tool,
                         {"decision": "approved", "approval_id": approval_id})
@@ -192,8 +262,11 @@ def decide_approval(state, approval_id: str, decision: str, reason: str = "appro
 def expire_approval(state, approval_id: str) -> None:
     """Reject a pending approval older than the timeout (lazy check)."""
     ap = state.store.get_approval(approval_id)
-    if ap and ap["status"] == "pending" and time.time() - ap["created_at"] > state.policy.approval_timeout:
-        decide_approval(state, approval_id, "reject", "approval_timeout")
+    if not ap or ap["status"] != "pending":
+        return
+    limit = state.policy.review_timeout if ap["kind"] == "data_review" else state.policy.approval_timeout
+    if time.time() - ap["created_at"] > limit:
+        decide_approval(state, approval_id, "reject", "approval_timeout", by="timeout")
 
 
 def _request_approval(state, call: ToolCall) -> tuple[int, dict]:
@@ -206,7 +279,7 @@ def _request_approval(state, call: ToolCall) -> tuple[int, dict]:
     mode = store.get_config("approval_mode")
     if mode not in ("auto_approve", "auto_reject"):
         return 202, {"ok": False, "pending_approval": True, "approval_id": approval_id}
-    decide_approval(state, approval_id, "approve" if mode == "auto_approve" else "reject")
+    decide_approval(state, approval_id, "approve" if mode == "auto_approve" else "reject", by="auto")
     ap = store.get_approval(approval_id)
     return ap["status_code"], ap["response"]
 

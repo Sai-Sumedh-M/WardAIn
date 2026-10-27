@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS idempotency(key TEXT PRIMARY KEY, run_id TEXT, step_i
   status_code INTEGER, response_json TEXT);
 CREATE TABLE IF NOT EXISTS approvals(approval_id TEXT PRIMARY KEY, run_id TEXT, step_id TEXT,
   agent_id TEXT, tool TEXT, envelope_json TEXT, status TEXT, response_json TEXT, created_at REAL,
-  decided_at REAL);
+  decided_at REAL, kind TEXT DEFAULT 'action', payload_json TEXT);
 CREATE TABLE IF NOT EXISTS config(key TEXT PRIMARY KEY, value_json TEXT);
 """
 
@@ -34,6 +34,7 @@ DEFAULT_CONFIG = {
     "monitor_enabled": True,
     "global_halt": False,
     "nvidia_guard": "off",
+    "hitl": "off",
 }
 
 
@@ -42,6 +43,10 @@ class GatewayStore:
         """Open the database, create tables and default config."""
         self.db = Database(db_path)
         self.db.executescript(SCHEMA)
+        cols = {r["name"] for r in self.db.query("PRAGMA table_info(approvals)")}
+        for col, ddl in (("kind", "TEXT DEFAULT 'action'"), ("payload_json", "TEXT")):
+            if col not in cols:   # database created before Phase 9
+                self.db.execute(f"ALTER TABLE approvals ADD COLUMN {col} {ddl}")
         for key, value in DEFAULT_CONFIG.items():
             self.db.execute("INSERT OR IGNORE INTO config VALUES(?,?)", (key, json.dumps(value)))
 
@@ -219,18 +224,23 @@ class GatewayStore:
                         (key, run_id, step_id, status_code, json.dumps(response)))
 
     # ---- approvals ----
-    def add_approval(self, approval_id: str, call: dict) -> None:
-        """Insert a pending approval holding the envelope."""
-        self.db.execute("INSERT INTO approvals VALUES(?,?,?,?,?,?,?,?,?,?)",
+    def add_approval(self, approval_id: str, call: dict, kind: str = "action",
+                     payload: dict | None = None) -> None:
+        """Insert a pending approval holding the envelope (and the data-review payload, if any)."""
+        self.db.execute("INSERT INTO approvals(approval_id,run_id,step_id,agent_id,tool,envelope_json,status,"
+                        "response_json,created_at,decided_at,kind,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                         (approval_id, call["run_id"], call["step_id"], call["agent_id"], call["tool"],
-                         json.dumps(call), "pending", None, time.time(), None))
+                         json.dumps(call), "pending", None, time.time(), None, kind,
+                         json.dumps(payload) if payload is not None else None))
 
     def _approval(self, row: dict | None) -> dict | None:
         """Decode JSON columns of an approval row."""
         if row is None:
             return None
         resp = json.loads(row["response_json"]) if row["response_json"] else None
-        return {**{k: v for k, v in row.items() if k not in ("envelope_json", "response_json")},
+        return {**{k: v for k, v in row.items() if k not in ("envelope_json", "response_json", "payload_json")},
+                "kind": row.get("kind") or "action",
+                "payload": json.loads(row["payload_json"]) if row.get("payload_json") else None,
                 "envelope": json.loads(row["envelope_json"]),
                 "status_code": resp["status_code"] if resp else None,
                 "response": resp["response"] if resp else None}

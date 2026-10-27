@@ -39,4 +39,10 @@
 - gateway/killswitch.py: set_status takes optional run_id; the monitor passes call.run_id so agent_quarantined carries it (manual /control leaves it null); agent_paused/resumed/halted use the same parameter
 - scenarios/campaign.py: run_quarantines matches by run_id when present, and falls back to agent + time window only for old events without one
 - gateway/app.py: GET /approvals/{id} returns 403 not_owner (no event, no step) when the token's agent is not the approval's agent_id; 404 for unknown approvals is checked first
+- scenarios/runner.py: --demo keeps the console's Human review toggle (approval_mode manual + hitl ambiguous) across the per-run reset so the literal DoD command works; official runs always use auto_reject
+- agents/client.py: approval polling window raised from 35 s to 65 s so it outlasts the 60 s review timeout
+- gateway/pipeline.py: a data_review release runs steps 13-18 without re-applying the chaos timeout_after_commit flag; auto decisions (auto_approve/auto_reject) use layer human_review for the sanitized events, `by` distinguishes human|auto|timeout
+- gateway/pipeline.py: data_review emits review_requested/review_decided only (no approval_requested/approval_decided)
+- gateway/store.py: approvals gets columns kind (default 'action') and payload_json; existing databases are migrated with ALTER TABLE on startup
+- dashboard.html: red-team escalation line is computed client-side from the per-item verdicts in /admin/redteam (no new endpoint); countdown uses the browser clock against the server created_at
 - docs: README and docs/how-it-works.md cover Phase 7 and 8 with numbers copied from the committed reports

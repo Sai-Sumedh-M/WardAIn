@@ -29,3 +29,19 @@ def test_official_run_writes_results_and_scorecard(monkeypatch, tmp_path):
     assert (tmp_path / "results/raw/normal_run-on.jsonl").exists()
     assert not Path(tmp_path / "data/demo_runs").exists()
     assert calls == [1]
+
+
+def test_scenario_all_ignores_demo_dir():
+    names = runner.all_scenarios()
+    assert "prompt_injection_ambiguous_live" not in names
+    assert Path("scenarios/demo/prompt_injection_ambiguous_live.yaml").exists()
+
+
+def test_scenario_file_runs_with_demo(monkeypatch, tmp_path):
+    calls: list[int] = []
+    fake_run(monkeypatch, tmp_path, calls)
+    src = Path(__file__).parent.parent / "scenarios/demo/prompt_injection_ambiguous_live.yaml"
+    monkeypatch.setattr(runner, "demo_review_settings", lambda admin: ("auto_reject", ""))
+    runner.main(["--scenario-file", str(src), "--mode", "on", "--runs", "1", "--demo"])
+    assert (tmp_path / "data/demo_runs/prompt_injection_ambiguous_live-on.jsonl").exists()
+    assert calls == []

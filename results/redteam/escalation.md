@@ -5,7 +5,5 @@ Escalation analysis (backend: nvidia, from cached verdicts, no API calls)
 | attacks | 17 | 13 | 11 |
 | benign | 0 | 0 | 10 |
 
-- Escalation rate (all 51 items): 25.5%
-- Escalations that are attacks: 100.0%
-- Attacks blocked automatically: 41.5%
-- Attacks caught with human review (human blocks every escalation): 73.2%
+- Escalated items: 13 of 51 (25.5%); escalations that are attacks: 100.0% (13 attacks, 0 benign)
+- Escalated items are held for review and default to blocked (sanitized) on timeout, so attack coverage is 73.2% with or without a human present (auto-blocked 41.5% + escalated and held)

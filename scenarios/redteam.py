@@ -247,11 +247,12 @@ def render_escalation_md(r: dict) -> str:
     lines = [f"Escalation analysis (backend: {r['backend']}, from cached verdicts, no API calls)", "",
              "| Group | auto_blocked | escalated | auto_allowed |", "|---|---|---|---|"]
     lines += [f"| {g} | {v['auto_blocked']} | {v['escalated']} | {v['auto_allowed']} |" for g, v in c.items()]
-    lines += ["", f"- Escalation rate (all {r['items']} items): {pct(r['escalation_rate'])}",
-              f"- Escalations that are attacks: {pct(r['escalations_that_are_attacks'])}",
-              f"- Attacks blocked automatically: {pct(r['attacks_auto_coverage'])}",
-              f"- Attacks caught with human review (human blocks every escalation): "
-              f"{pct(r['attacks_caught_with_human'])}"]
+    lines += ["", f"- Escalated items: {c['attacks']['escalated'] + c['benign']['escalated']} of {r['items']} "
+              f"({pct(r['escalation_rate'])}); escalations that are attacks: {pct(r['escalations_that_are_attacks'])} "
+              f"({c['attacks']['escalated']} attacks, {c['benign']['escalated']} benign)",
+              "- Escalated items are held for review and default to blocked (sanitized) on timeout, so attack "
+              f"coverage is {pct(r['attacks_caught_with_human'])} with or without a human present "
+              f"(auto-blocked {pct(r['attacks_auto_coverage'])} + escalated and held)"]
     return "\n".join(lines) + "\n"
 
 

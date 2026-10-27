@@ -205,7 +205,8 @@ def demo_review_settings(admin: AdminClient) -> tuple[str, str]:
 def main(argv: list[str] | None = None) -> None:
     """CLI entry point."""
     ap = argparse.ArgumentParser()
-    ap.add_argument("--scenario", required=True)
+    ap.add_argument("--scenario")
+    ap.add_argument("--scenario-file", help="load the scenario from this YAML path (use with --demo)")
     ap.add_argument("--mode", choices=["on", "off", "both"], required=True)
     ap.add_argument("--runs", type=int)
     ap.add_argument("--step-delay", type=float, default=0.0)
@@ -213,16 +214,22 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--demo", action="store_true",
                     help="write raw output to data/demo_runs/ and leave results/scorecard.* untouched")
     args = ap.parse_args(argv)
+    if not args.scenario and not args.scenario_file:
+        ap.error("--scenario or --scenario-file is required")
+    if args.scenario_file and not args.demo:
+        ap.error("--scenario-file requires --demo (official results come only from scenarios/definitions)")
     settings = load_settings()
     wait_for_gateway(settings.GATEWAY_URL)
     admin = AdminClient(settings.GATEWAY_URL, settings.ADMIN_TOKEN)
     console = demo_review_settings(admin) if args.demo else ("auto_reject", "")
-    names = all_scenarios() if args.scenario == "all" else [args.scenario]
+    names = all_scenarios() if args.scenario == "all" and not args.scenario_file else [args.scenario or "file"]
     modes = ["off", "on"] if args.mode == "both" else [args.mode]
     raw_dir = raw_dir_for(settings, args.demo)
     raw_dir.mkdir(parents=True, exist_ok=True)
     for name in names:
-        sc = load_scenario(name)
+        sc = (yaml.safe_load(Path(args.scenario_file).read_text()) if args.scenario_file
+              else load_scenario(name))
+        name = sc["name"]
         for mode in modes:
             out = raw_dir / f"{name}-{mode}.jsonl"
             out.unlink(missing_ok=True)

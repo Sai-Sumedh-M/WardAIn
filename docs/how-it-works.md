@@ -179,11 +179,11 @@ Caveats: one run per attack and mode, one model, a small sample.
 
 **What it does:** when the two NVIDIA layers disagree about a field (exactly one flags it), the gateway does not guess. With config `hitl=ambiguous` it parks the tool result in a `data_review` approval (`approvals.kind`, `payload_json` holds the original and sanitized results and the flagged fields) and emits `review_requested`. A human decides in the console: Block releases the sanitized record, Allow original releases the raw one. No answer within `review_timeout_seconds` (60) releases the sanitized record. Both layers flagging still removes the field automatically (`layer: nvidia_both`), and neither flagging keeps it. The step is recorded once with the released result; `review_decided` carries `decision` and `by` (`human|auto|timeout`).
 **Files:** `gateway/pipeline.py` (`_nvidia_review`, `_request_review`, `_decide_review`), `gateway/nvidia_guard.py` (`check_both`), `gateway/static/dashboard.html`, `scenarios/redteam.py` (`escalation`). **Scenario:** `prompt_injection_ambiguous`. **Tests:** `tests/test_hitl.py`.
-**Numbers:** from the cached red-team verdicts, 25.5% of items (13 of 51, all attacks) would be escalated; automatic coverage of attacks is 41.5%, rising to 73.2% if the human blocks each escalation (`results/redteam/escalation.md`).
+**Numbers:** from the cached red-team verdicts, 13 of 51 items (25.5%) are escalated; all 13 are attacks, 0 benign. Escalated items are held and default to blocked on timeout, so attack coverage is 73.2% with or without a human present (`results/redteam/escalation.md`).
 
 **Q: Why not let the LLM judge decide ambiguous cases?** The two layers are the decision makers and they disagree; breaking the tie with a third model call adds latency and another thing that can be fooled. A person sees the text and the two verdicts.
 **Q: What if no human is watching?** The default is safe: after 60 s the sanitized record is released and the run continues. A wrong block costs one missing note field, not a leaked action.
-**Q: Doesn't that make the agent slow?** Only for the 25% of items that are escalated, and only while a human is expected to be present; clear attacks and clear benign data never wait.
+**Q: Doesn't that make the agent slow?** Only for the 25.5% of items that are escalated; if nobody answers they are released sanitized after the timeout; clear attacks and clear benign data never wait.
 **Q: Does a human approval bypass the other controls?** No. Allowing the original only releases the data; policy, scope, recipient and guard checks still apply to whatever the agent then tries to do.
 
 ## Dashboard

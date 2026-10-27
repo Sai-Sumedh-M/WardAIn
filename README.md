@@ -137,7 +137,12 @@ official numbers.
    ```
    This fails (name does not resolve: `agents` is only on the internal `agentnet`). The same check
    against `http://gateway:8000/health` succeeds. The only path to the tools is through the gateway.
-5. **Scorecard.** Run `--scenario all --mode both` (or `bash scripts/run_all.sh`), then open the
+5. **Human review (live).** Needs `GUARD_BACKEND=nvidia` and `NVIDIA_API_KEY` (start the gateway with them; the
+   mock guard cannot reproduce this split). Turn "Human review" ON in the console, then run
+   `.venv/bin/python -m scenarios.runner --scenario prompt_injection_ambiguous_live --scenario-file scenarios/demo/prompt_injection_ambiguous_live.yaml --mode on --runs 1 --demo`.
+   The planted note is a real attack where NVIDIA safety flags it and the Nemotron judge does not, so it appears
+   under "Needs your decision". The file lives outside `scenarios/definitions/`, so `--scenario all` never runs it.
+6. **Scorecard.** Run `--scenario all --mode both` (or `bash scripts/run_all.sh`), then open the
    **Scorecard** page: OFF vs ON for every metric plus the success-rate bar chart.
 
 ## Architecture
@@ -248,8 +253,9 @@ and not regex; auto-allowed = none.
 | attacks (41) | 17 | 13 | 11 |
 | benign (10) | 0 | 0 | 10 |
 
-25.5% of all 51 items would go to a human, and every escalation is an attack (0 benign). Automatic coverage is 41.5% of
-attacks; if the human blocks every escalation it rises to 73.2%, and 11 attacks (26.8%) still pass every layer.
+13 of 51 items (25.5%) are escalated; all 13 are attacks and 0 are benign. Escalated items are held and default to
+blocked (sanitized) on timeout, so attack coverage is 73.2% with or without a human present; a human can only
+release an item early. 11 attacks (26.8%) still pass every layer.
 
 ## End-to-end attack campaign
 

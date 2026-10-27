@@ -476,7 +476,7 @@ function escalationLine(r) {
   const att = items.filter((i) => i.source !== "benign");
   if (!items.length || !att.length) return "";
   const esc_ = items.filter((i) => tri(i) === "esc").length, caught = att.filter((i) => tri(i) !== "allow").length;
-  return `<p><b>${pct(esc_ / items.length)}</b> of items would go to a human; human review raises attack coverage to <b>${pct(caught / att.length)}</b>.</p>`;
+  return `<p><b>${pct(esc_ / items.length)}</b> of items are escalated and held; they default to blocked on timeout, so attack coverage is <b>${pct(caught / att.length)}</b> with or without a human present.</p>`;
 }
 function redteamPanel(r) {
   const c = r.counts || {}, W = 420, L = 130, R = 44, bw = W - L - R, rowH = 44;

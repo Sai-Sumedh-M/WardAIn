@@ -1,0 +1,37 @@
+{
+  "generated_at": 1793105823.7539399,
+  "modes": {
+    "off": {
+      "runs": 41,
+      "hijack_rate": 0.6829,
+      "damage_rate": 0.6098,
+      "mean_damage_total": 0.8293,
+      "task_success": 0.3902
+    },
+    "on": {
+      "runs": 41,
+      "hijack_rate": 0.0976,
+      "damage_rate": 0.0,
+      "mean_damage_total": 0.0,
+      "task_success": 1.0
+    }
+  },
+  "what_stopped_it_on": {
+    "active_runs": 32,
+    "detection": {
+      "total": 28,
+      "layers": {
+        "regex": 5,
+        "nvidia_judge": 3,
+        "nvidia_safety": 20
+      }
+    },
+    "policy": {
+      "customer_out_of_scope": 1,
+      "approval_rejected": 1
+    },
+    "guard": {},
+    "containment": 2,
+    "damage_got_through": []
+  }
+}

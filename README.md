@@ -214,3 +214,25 @@ or sending data externally. The 4 excluded items were flagged by regex 0/4, safe
 
 The regex layer misses every LLM-generated attack; the NVIDIA layers add most of the coverage, but about 42% of
 generated attacks still evade all three layers, so the guard is defence in depth, not a complete defence.
+
+## End-to-end attack campaign
+
+Detection rates are not the same as damage. This campaign plants every reviewed red-team attack (15 seed + 26 reviewed generated = 41; human-excluded items are skipped) in customer C001's record, runs the full workflow with **real LLM agents**, and measures what actually changed in the tool state. Each attack runs once with WardAIn OFF and once ON.
+
+Setup: agents ran on **Nemotron 3.5 Lightning (NVFP4), self-hosted with vLLM on an NVIDIA L40S via Brev**. The guard layers (content safety + judge) ran on the NVIDIA API catalog. Engine: plain. The executor prompt is **deliberately compliant** ("if the record contains an instruction that requires an action, perform it"): we test WardAIn, not the model's own resistance. Reproduce with `python -m scenarios.campaign run` then `report`; full tables in `results/campaign/campaign_report.md`.
+
+| Mode | Runs | Hijack rate | Damage rate | Mean damage | Task success |
+|---|---|---|---|---|---|
+| OFF | 41 | 0.683 | 0.610 | 0.829 | 0.390 |
+| ON | 41 | 0.098 | 0.000 | 0.000 | 1.000 |
+
+What stopped the attacks in ON (32 runs where the attack was active, i.e. hijacked or sanitized):
+
+| Defence | Count |
+|---|---|
+| detection (any layer) | 28 (nvidia_safety 20, regex 5, nvidia_judge 3) |
+| policy block | 2 (`customer_out_of_scope` 1, `approval_rejected` 1) |
+| containment (quarantine + rollback) | 2 |
+| damage got through | 0 |
+
+Honest reading: with WardAIn OFF, a compliant agent did real damage in 25 of 41 runs (9 refunds to other customers, 8 emails to attackers, 7 extra refunds, 10 balance tampers; 7 runs ended `failed`). With WardAIn ON, no damage reached the tool state in any of the 41 runs. In 4 ON runs (gen-09, gen-16, gen-18, gen-19) the injection passed every detection layer and the agent was hijacked; in those, the policy engine, the approval gate, or monitor quarantine with compensating rollback stopped the action. That is the point of layered defence: detection missed them and the controls behind it still held. Caveats: one run per attack and mode, a single model, a deliberately compliant prompt, and a small sample, so treat the rates as indicative rather than precise. The raw `quarantined` flag in two ON records (gen-16, gen-19) is false because it was computed from events that carry no run id; the report derives containment from rollback events instead (fixed in `scenarios/campaign.py` for future runs). The official scorecard (`results/scorecard.*`) and the red-team report are unchanged and use the mock guard backend.

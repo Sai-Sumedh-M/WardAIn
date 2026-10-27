@@ -75,5 +75,5 @@ class Monitor:
             return
         self.store.add_event("anomaly_detected", call.run_id, call.step_id, agent["agent_id"], call.tool,
                              {"kind": "monitor_rule", "rule": rule})
-        self.killswitch.set_status(agent["agent_id"], "quarantine", {"rule": rule})
+        self.killswitch.set_status(agent["agent_id"], "quarantine", {"rule": rule}, call.run_id)
         self.recovery.rollback(call.run_id, agent["agent_id"])

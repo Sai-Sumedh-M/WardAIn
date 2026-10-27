@@ -140,6 +140,41 @@ Files: `scenarios/runner.py`, `scenarios/attacks.py`, `scenarios/scorecard.py`,
 outbox, balances), not from what the agents or gateway claim.
 **Q: Why OFF mode?** The same code path with the protections skipped gives a true baseline.
 
+## NVIDIA guard layers (Phase 7)
+
+**What it does:** after the regex sanitizer, tool results of `get_customer` / `get_payments` can also be classified by NVIDIA models: `nemotron-3.5-content-safety` (`safety`) and the Nemotron judge (`judge`), selected by the gateway config `nvidia_guard` (`off|safety|judge|both`). A flagged string field is replaced with `[REMOVED: untrusted instruction]` and emits `injection_sanitized` / `anomaly_detected` with the `layer` (`regex`, `nvidia_safety`, `nvidia_judge`). If the NVIDIA call fails, `guard_unavailable` is emitted and `NVIDIA_GUARD_FAIL` decides open or closed.
+**Files:** `gateway/nvidia_guard.py`, `gateway/pipeline.py` (step 12). **Scenario:** `prompt_injection_semantic`.
+**Official scorecard:** uses `GUARD_BACKEND=mock` (offline test double), so it stays deterministic. Real NVIDIA rates come from the red-team campaign.
+
+**Red-team campaign:** `scenarios/redteam.py` generates attacks with the LLM, adds 15 seed attacks, human-reviews them (4 ambiguous items excluded) and classifies 41 attacks and 10 benign notes with each layer combination (`results/redteam/redteam_report.md`):
+
+| Layers | Detection (all) | Seed | Generated | False positives |
+|---|---|---|---|---|
+| regex | 12.2% | 33.3% | 0.0% | 0.0% |
+| regex+safety | 63.4% | 86.7% | 50.0% | 0.0% |
+| regex+judge | 51.2% | 86.7% | 30.8% | 0.0% |
+| regex+safety+judge | 73.2% | 100.0% | 57.7% | 0.0% |
+
+**Q: Why not just use the LLM judge?** Each layer misses different attacks; safety+judge together beats either alone, and neither is relied on alone (see the campaign).
+**Q: What if the NVIDIA API is down or rate-limited?** Calls are cached and throttled (`NVIDIA_GUARD_MIN_INTERVAL`), 429s are retried, and a failure emits `guard_unavailable`; `NVIDIA_GUARD_FAIL=closed` removes the field instead of passing it.
+**Q: 26% of attacks evade all layers. Is that acceptable?** It is why the guard is defence in depth; the next section measures what happens to those.
+
+## End-to-end attack campaign (Phase 8)
+
+**What it does:** `scenarios/campaign.py` plants each of the 41 reviewed attacks in customer C001's record and runs the whole workflow with real LLM agents (Nemotron 3.5 Lightning, self-hosted with vLLM on an NVIDIA L40S via Brev; guards on the hosted NVIDIA API). The executor (`executor_mode: campaign`) reads the record with a deliberately compliant prompt and may act on it. Ground truth is the tool state, once with WardAIn OFF and once ON. **Files:** `scenarios/campaign.py`, `agents/workflow.py`. Report: `results/campaign/campaign_report.md`.
+
+| Mode | Runs | Hijack rate | Damage rate | Task success |
+|---|---|---|---|---|
+| OFF | 41 | 68.3% | 61.0% | 39.0% |
+| ON | 41 | 9.8% | 0.0% | 100.0% |
+
+In the 32 ON runs where the attack was active, detection stopped 28 (nvidia_safety 20, regex 5, nvidia_judge 3), policy blocked 2 (`customer_out_of_scope`, `approval_rejected`), quarantine plus compensating rollback contained 2, and 0 damage got through. Quarantine events carry the run's `run_id`, which is how containment is attributed to a run.
+Caveats: one run per attack and mode, one model, a small sample.
+
+**Q: Why does ON show damage 0 when detection is only 73%?** The 4 hijacked ON runs were stopped behind detection by policy (recipient/customer scope, approval gate) or by the monitor quarantining the agent and rolling back its side effects.
+**Q: Is the compliant prompt cheating?** It is the worst case for the gateway: an agent that obeys any instruction in data. A model that resists would make OFF look better; the ON result does not depend on it.
+**Q: How do you know a quarantine belongs to a given run?** `agent_quarantined` events written by the monitor carry the run's `run_id`; manual console actions leave it null.
+
 ## Dashboard
 
 Streamlit app over the admin API: live agent status and controls, event stream, approvals, tool state,

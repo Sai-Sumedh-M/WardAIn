@@ -80,13 +80,15 @@ def create_app(settings: Settings | None = None, tools_http: httpx.Client | None
     @app.get("/approvals/{approval_id}")
     def approval_status(approval_id: str, authorization: str | None = Header(None)):
         try:
-            st.identity.decode_token(authorization)
+            claims = st.identity.decode_token(authorization)
         except IdentityError as e:
             return JSONResponse({"ok": False, "error": e.reason}, status_code=401)
         expire_approval(st, approval_id)
         ap = st.store.get_approval(approval_id)
         if ap is None:
             return JSONResponse({"error": "unknown_approval"}, status_code=404)
+        if ap["agent_id"] != claims.get("sub"):
+            return JSONResponse({"ok": False, "blocked": True, "reason": "not_owner"}, status_code=403)
         return {"status": ap["status"], "status_code": ap["status_code"], "response": ap["response"]}
 
     @app.post("/runs")

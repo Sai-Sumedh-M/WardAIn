@@ -36,3 +36,7 @@
 - scenarios/runner.py: --demo writes raw files to data/demo_runs/ (relative to the working directory, gitignored via data/) and skips the scorecard; the Streamlit "Run once" button always passes --demo
 - README.md: all demo-section runner commands (and the quick-start normal_run example) use --demo; only the `all --mode both` command is official
 - dashboard.html: outbox LEAK = sent external email not addressed to the current run customer email (looked up from tool_state customers); "Important only" is a client-side filter; rate metrics shown as percentages, human labels live in a LABELS map in the page
+- gateway/killswitch.py: set_status takes optional run_id; the monitor passes call.run_id so agent_quarantined carries it (manual /control leaves it null); agent_paused/resumed/halted use the same parameter
+- scenarios/campaign.py: run_quarantines matches by run_id when present, and falls back to agent + time window only for old events without one
+- gateway/app.py: GET /approvals/{id} returns 403 not_owner (no event, no step) when the token's agent is not the approval's agent_id; 404 for unknown approvals is checked first
+- docs: README and docs/how-it-works.md cover Phase 7 and 8 with numbers copied from the committed reports

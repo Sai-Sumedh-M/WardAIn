@@ -93,3 +93,12 @@ def test_quarantined_from_run_agent_quarantined_events():
     assert campaign.stopped_by(run, q)["quarantined"] is True and campaign.stopped_by(run, q)["compensations"] == 1
     assert campaign.stopped_by(run, campaign.run_quarantines(run, [other_run, other_agent]))["quarantined"] is False
     assert campaign.stopped_by(run)["quarantined"] is False
+
+
+def test_run_quarantines_prefers_run_id_and_falls_back_for_old_events():
+    run = [_ev("call_received", "executor-1", 10.0), _ev("rollback_completed", "executor-1", 13.0)]
+    new_mine = _ev("agent_quarantined", "executor-1", 11.5, run_id="r1")
+    new_other = _ev("agent_quarantined", "executor-1", 11.6, run_id="r2")      # in window but another run
+    old_mine = _ev("agent_quarantined", "executor-1", 12.0, run_id=None)
+    assert campaign.run_quarantines(run, [new_mine, new_other]) == [new_mine]
+    assert campaign.run_quarantines(run, [old_mine, new_other]) == [old_mine]

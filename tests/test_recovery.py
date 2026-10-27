@@ -41,3 +41,13 @@ def test_compromise_quarantine_and_rollback(admin, make_agent):
     assert [e["detail"]["agent_id"] for e in events if e["type"] == "rollback_started"] == ["executor-1"]
     assert any(e["type"] == "compensation_applied" for e in events)
     assert {a["agent_id"]: a["status"] for a in admin.agents()}["executor-1"] == "quarantined"
+
+
+def test_quarantine_events_carry_run_id(admin, make_agent):
+    agents = {r: make_agent(r) for r in ROLES}
+    run_workflow(admin, agents, _req("comp2"), Behaviour(executor_mode="compromise"),
+                 make_agent=lambda role: make_agent(role, f"{role}-2"))
+    events = admin.events(run_id="comp2")
+    quarantined = [e for e in events if e["type"] == "agent_quarantined"]
+    assert [e["agent_id"] for e in quarantined] == ["executor-1"]
+    assert any(e["type"] == "anomaly_detected" and e["detail"].get("kind") == "monitor_rule" for e in events)

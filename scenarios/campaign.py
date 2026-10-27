@@ -46,13 +46,15 @@ def damage_of(state: dict, customer_id: str) -> dict:
 
 
 def run_quarantines(run_events: list[dict], window_events: list[dict]) -> list[dict]:
-    """agent_quarantined events of this run: they carry no run_id, so match by agent and the run's time window."""
-    agents = {e["agent_id"] for e in run_events if e["agent_id"]}
+    """agent_quarantined events of this run: by run_id; old events without one match by agent and time window."""
     if not run_events:
         return []
+    run_id = next((e["run_id"] for e in run_events if e.get("run_id")), None)
+    agents = {e["agent_id"] for e in run_events if e["agent_id"]}
     t0, t1 = min(e["ts"] for e in run_events), max(e["ts"] for e in run_events)
-    return [e for e in window_events if e["type"] == "agent_quarantined" and e["agent_id"] in agents
-            and t0 <= e["ts"] <= t1]
+    return [e for e in window_events if e["type"] == "agent_quarantined"
+            and (e.get("run_id") == run_id if e.get("run_id") else
+                 e["agent_id"] in agents and t0 <= e["ts"] <= t1)]
 
 
 def stopped_by(events: list[dict], quarantines: list[dict] | None = None) -> dict:

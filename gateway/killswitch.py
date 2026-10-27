@@ -25,13 +25,14 @@ class KillSwitch:
             return "agent_quarantined"
         return None
 
-    def set_status(self, agent_id: str, action: str, detail: dict | None = None) -> None:
-        """Apply pause | resume | quarantine | halt to an agent."""
+    def set_status(self, agent_id: str, action: str, detail: dict | None = None,
+                   run_id: str | None = None) -> None:
+        """Apply pause | resume | quarantine | halt to an agent; run_id tags the event when triggered inside a run."""
         status, event = ACTIONS[action]
         self.store.set_agent_status(agent_id, status)
         if action == "halt":
             self.identity.revoke_agent(agent_id)
-        self.store.add_event(event, agent_id=agent_id, detail=detail or {})
+        self.store.add_event(event, run_id, agent_id=agent_id, detail=detail or {})
 
     def halt_all(self) -> None:
         """Block every agent."""

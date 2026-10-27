@@ -78,3 +78,25 @@ def test_high_risk_still_guarded(admin, make_agent, gateway_app):
     assert res.body["event_type"] == "guard_blocked"
     assert gateway_app.state.store.db.query("SELECT * FROM approvals") == []
     assert admin.tool_state()["payments"] == []
+
+
+def test_approval_status_only_for_owner(admin, make_agent):
+    start_run(admin)
+    admin.set_config({"approval_mode": "manual"})
+    owner, other = make_agent("executor"), make_agent("executor", "executor-2")
+    owner.ensure_token(), other.ensure_token()
+    import threading
+    threading.Thread(target=lambda: owner.call("issue_refund", {"customer_id": "C001", "amount": 600.0}, "r1"),
+                     daemon=True).start()
+    import time
+    for _ in range(50):
+        pending = admin.approvals()
+        if pending:
+            break
+        time.sleep(0.05)
+    aid = pending[0]["approval_id"]
+    res = other.http.get(f"/approvals/{aid}", headers={"Authorization": f"Bearer {other.token}"})
+    assert res.status_code == 403 and res.json() == {"ok": False, "blocked": True, "reason": "not_owner"}
+    res = owner.http.get(f"/approvals/{aid}", headers={"Authorization": f"Bearer {owner.token}"})
+    assert res.status_code == 200 and res.json()["status"] == "pending"
+    admin.decide(aid, "reject")

@@ -390,6 +390,7 @@ class Event(BaseModel):
 | `global_halt`, `agent_paused`, `agent_quarantined`, `agent_halted` | 403 | `agent_not_active` |
 | `role_not_allowed`, `system_only_tool`, `recipient_not_allowed`, `customer_out_of_scope`, `approval_rejected`, `approval_timeout` | 403 | `policy_blocked` |
 | `invalid_args`, `loop_detected`, `pii_egress` | 403 | `guard_blocked` |
+| `not_owner` (only `GET /approvals/{id}`, no event) | 403 | - |
 | `tool_error`, `invalid_tool_output`, `llm_error` | 502 | `tool_error` |
 | `circuit_open`, `tool_unavailable` | 503 | `tool_error` |
 | `timeout` | 504 | `tool_error` |
@@ -405,6 +406,8 @@ global_resume, rollback_started, compensation_applied, rollback_completed, outag
 `tool_called.detail` = `{"status_code": int, "latency_ms": float}` where latency_ms is total gateway
 handling time for that request (from receipt to response). Every other event's detail includes
 `"reason"` when a reason exists.
+`agent_quarantined|agent_paused|agent_resumed|agent_halted` events carry `run_id` when the change is triggered
+inside a /call (monitor rules); manual `/control` actions leave it null.
 
 ---------------------------------------------------------------------------------------------------
 ## 8. Tools service (tools/mock_tools.py)
@@ -489,7 +492,7 @@ Admin endpoints require header `X-Admin-Token: <ADMIN_TOKEN>` (else 401 `{"error
 | `POST /identity/register` | admin | body `{agent_id, role, public_key}` |
 | `POST /identity/token` | none (signed challenge) | body `{agent_id, timestamp, signature}` → token |
 | `POST /call` | agent | body = ToolCall JSON; header `Authorization: Bearer <jwt>` → section 11 |
-| `GET /approvals/{approval_id}` | agent (Bearer, token valid only; no envelope) | `{"status": ..., "status_code": int|null, "response": {...}|null}` |
+| `GET /approvals/{approval_id}` | agent (Bearer, token valid only; no envelope) | `{"status": ..., "status_code": int|null, "response": {...}|null}`; 403 `{"ok": false, "blocked": true, "reason": "not_owner"}` if the token's agent is not the approval's `agent_id` |
 | `POST /runs` | admin | body RunRequest → insert run (mode = current config mode, status running), event `run_started` |
 | `GET /recovery/{run_id}` | admin | section 15 recovery status |
 | `POST /control/{agent_id}/{action}` | admin | action in `pause, resume, quarantine, halt` |
@@ -651,7 +654,7 @@ Checks in this order:
   `global_halt` config true → `global_halt`; status `paused` → `agent_paused`; status `halted` →
   `agent_halted`; status `quarantined` and tool not in `quarantine_allowed_tools` →
   `agent_quarantined`. Otherwise None.
-- `set_status(agent_id, action)`: pause→`paused` (event `agent_paused`), resume→`active`
+- `set_status(agent_id, action, detail=None, run_id=None)`: when triggered inside a /call (monitor rules) `run_id` is passed so the event carries it; manual /control actions leave it null. pause→`paused` (event `agent_paused`), resume→`active`
   (`agent_resumed`), quarantine→`quarantined` (`agent_quarantined`), halt→`halted` + `identity.revoke_agent`
   (`agent_halted`).
 - `halt_all()`: config `global_halt=true`, event `global_halt`. `resume_all()`: false, `global_resume`.

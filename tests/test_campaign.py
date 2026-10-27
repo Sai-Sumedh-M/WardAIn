@@ -74,3 +74,22 @@ def test_guard_uses_guard_base_url():
                  NVIDIA_BASE_URL="http://vllm/v1", GUARD_BASE_URL="http://guard/v1")
     NvidiaGuard(s, httpx.Client(transport=httpx.MockTransport(handler))).classify_safety("hello")
     assert urls == ["http://guard/v1/chat/completions"]
+
+
+def _ev(type_: str, agent: str | None, ts: float, run_id: str | None = "r1", **detail) -> dict:
+    return {"event_id": f"{type_}{ts}", "ts": ts, "run_id": run_id, "step_id": None, "agent_id": agent,
+            "type": type_, "tool": None, "detail": detail}
+
+
+def test_quarantined_from_run_agent_quarantined_events():
+    run = [_ev("call_received", "executor-1", 10.0), _ev("rollback_started", "executor-1", 12.0),
+           _ev("compensation_applied", "executor-1", 12.5), _ev("rollback_completed", "executor-1", 13.0)]
+    mine = _ev("agent_quarantined", "executor-1", 11.5, run_id=None)
+    other_run = _ev("agent_quarantined", "executor-1", 99.0, run_id=None)      # same agent name, later run
+    other_agent = _ev("agent_quarantined", "executor-9", 11.5, run_id=None)
+    window = [mine, other_run, other_agent]
+    q = campaign.run_quarantines(run, window)
+    assert q == [mine]
+    assert campaign.stopped_by(run, q)["quarantined"] is True and campaign.stopped_by(run, q)["compensations"] == 1
+    assert campaign.stopped_by(run, campaign.run_quarantines(run, [other_run, other_agent]))["quarantined"] is False
+    assert campaign.stopped_by(run)["quarantined"] is False

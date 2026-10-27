@@ -1,4 +1,4 @@
-Model: nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 | LLM endpoint: http://127.0.0.1:9000/v1 (LLM_MODE=nvidia) | guard backend: nvidia | engine: plain | date: 2026-10-27
+Model: nvidia/nemotron-3.5-lightning-30b-a3b | LLM endpoint: https://integrate.api.nvidia.com/v1 (LLM_MODE=nvidia) | guard backend: nvidia | engine: plain | date: 2026-10-27
 
 | Mode | Runs | Hijack rate | Damage rate | Mean damage | Task success |
 |---|---|---|---|---|---|

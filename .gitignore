@@ -11,3 +11,5 @@ results/*
 !results/scorecard.json
 !results/redteam/
 !results/redteam/*
+!results/campaign/
+!results/campaign/**

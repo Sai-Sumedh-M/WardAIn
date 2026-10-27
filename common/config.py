@@ -23,10 +23,12 @@ class Settings:
     SAFETY_MODEL: str = "nvidia/nemotron-3.5-content-safety"
     JUDGE_MODEL: str = "nvidia/nemotron-3.5-lightning-30b-a3b"
     NVIDIA_GUARD_MIN_INTERVAL: str = "1.6"
+    GUARD_BASE_URL: str = ""           # empty = use NVIDIA_BASE_URL
 
 
 def load_settings() -> Settings:
     """Build Settings from os.environ, falling back to the defaults."""
     defaults = Settings()
     values = {f: os.environ.get(f, getattr(defaults, f)) for f in Settings.__dataclass_fields__}
+    values["GUARD_BASE_URL"] = values["GUARD_BASE_URL"] or values["NVIDIA_BASE_URL"]
     return Settings(**values)

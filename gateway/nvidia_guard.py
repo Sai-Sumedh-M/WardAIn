@@ -53,7 +53,7 @@ class NvidiaGuard:
             with self.lock:
                 self._throttle()
             try:
-                resp = self.http.post(f"{s.NVIDIA_BASE_URL}/chat/completions", json=body, timeout=15,
+                resp = self.http.post(f"{s.GUARD_BASE_URL or s.NVIDIA_BASE_URL}/chat/completions", json=body, timeout=15,
                                       headers={"Authorization": f"Bearer {s.NVIDIA_API_KEY}"})
             except httpx.HTTPError as e:
                 raise GuardError(str(e))

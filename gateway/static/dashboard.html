@@ -149,7 +149,7 @@ select { background: var(--ink-800); color: var(--text); border: 1px solid var(-
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--line); padding: 3px 6px 3px 0; }
 td { padding: 3px 6px 3px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-td.num, th.num { text-align: right; padding-right: 0; }
+td.num, th.num { text-align: right; padding-right: 16px; }
 tr.reversed td, tr.recalled td { color: var(--muted); text-decoration: line-through; }
 tr.leak td { color: var(--alarm); font-weight: 600; text-decoration: none; }
 details.rawlog summary { cursor: pointer; font-size: 15px; font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
@@ -614,10 +614,12 @@ function table(cols, rows, rowCls) {
 function renderTools(ts, run) {
   const pay = (ts.payments || []).slice().sort((a, b) => b.created_at - a.created_at);
   const done = pay.filter((p) => p.status === "completed").length;
-  $("payments").innerHTML = `<div class="meta" style="margin-bottom:4px">${done} completed, ${pay.length - done} reversed</div>` +
+  const stray = (p) => p.status === "completed" && run && p.customer_id !== run.customer_id;
+  const strays = pay.filter(stray).length;
+  $("payments").innerHTML = `<div class="meta" style="margin-bottom:4px">${done} completed, ${pay.length - done} reversed${strays ? `, <span style="color:var(--alarm)">${strays} to other customers</span>` : ""}</div>` +
     table([{h: "Payment", v: (r) => r.payment_id}, {h: "Customer", v: (r) => r.customer_id},
       {h: "Amount", num: 1, v: (r) => Number(r.amount).toFixed(2)}, {h: "Status", v: (r) => r.status}],
-      pay.slice(0, 12), (r) => r.status);
+      pay.slice(0, 12), (r) => (stray(r) ? "leak " : "") + r.status);
   const target = (ts.customers || []).find((c) => run && c.customer_id === run.customer_id);
   const kind = (o) => (target && o.to_addr === target.email ? "customer"
     : o.external && o.status === "sent" ? "leak" : o.external ? "external" : "internal");

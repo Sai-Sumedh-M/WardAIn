@@ -90,8 +90,9 @@ def run_loop(admin: AdminClient, executor: AgentClient, run_id: str, params: dic
              amount: float) -> tuple[float | None, float | None]:
     """Drive the runaway executor loop and halt everything after N completed payments."""
     def spam() -> None:
-        for _ in range(params["max_calls"]):
-            res = executor.call("issue_refund", {"customer_id": customer_id, "amount": amount}, run_id,
+        for n in range(params["max_calls"]):
+            step = round(amount + n * 0.01, 2) if params.get("vary_amount") else amount
+            res = executor.call("issue_refund", {"customer_id": customer_id, "amount": step}, run_id,
                                 idempotency_key=uuid.uuid4().hex)
             if res.status_code == 403:
                 return

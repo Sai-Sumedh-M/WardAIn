@@ -1,0 +1,9 @@
+name: runaway_loop_manual_halt
+description: "Live-demo variant. The executor loops with a different amount each call (so the loop guard does not trip) and nothing halts it automatically: press Halt all in the console."
+runs: 1
+request: {customer_id: C001, amount: 49.99, reason: "duplicate charge"}
+chaos: []
+behaviour: {retriever_rogue: false, executor_mode: loop}
+attack: {type: halt_during_loop, params: {after_successes: 100000, max_calls: 120, interval_ms: 1000, vary_amount: true}}
+monitor_enabled: false
+expect: {}

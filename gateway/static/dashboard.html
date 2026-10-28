@@ -530,6 +530,7 @@ function payloadNode(text) {
 }
 function buildRow(e, c) {
   const r = document.createElement("div"); r.className = "row " + c.tick + (firstPaint ? "" : " enter");
+  r.addEventListener("animationend", (ev) => { if (ev.target === r) r.classList.remove("enter"); });
   const tick = document.createElement("span"); tick.className = "tick";
   const when = document.createElement("span"); when.className = "when"; when.textContent = relTime(e.ts);
   const body = document.createElement("div");
@@ -555,7 +556,7 @@ function renderThreats() {
   const scoped = scopedEvents(), s = summarize(scoped);
   const items = [];
   for (const e of scoped) { const c = classify(e); if (c) items.push([e, c]); }  // scoped is newest first
-  const root = $("threat-feed"), shown = items.slice(0, MAX_ROWS), keep = new Set();
+  const root = $("threat-feed"), shown = items.slice(0, MAX_ROWS), keep = new Set(), order = [];
   if (!shown.length) { rowCache.clear(); root.innerHTML = '<div class="nodata">No threats in this run. Start a scenario from the terminal or the Streamlit dashboard.</div>'; }
   else {
     if (root.querySelector(".nodata")) root.innerHTML = "";
@@ -564,9 +565,11 @@ function renderThreats() {
       let el = rowCache.get(e.event_id);
       if (!el) { el = buildRow(e, c); rowCache.set(e.event_id, el); }
       else el.querySelector(".when").textContent = relTime(e.ts);
-      root.appendChild(el);  // appending in order also reorders existing rows
+      order.push(el);
     }
     for (const [id, el] of rowCache) if (!keep.has(id)) { el.remove(); rowCache.delete(id); }
+    // Only touch the DOM where the order differs: re-inserting a node restarts its CSS animation.
+    order.forEach((el, i) => { if (root.children[i] !== el) root.insertBefore(el, root.children[i] || null); });
   }
   setCount($("c-threats"), s.threats); setCount($("c-blocked"), s.contained); setCount($("c-quar"), s.quar);
   const big = $("hero-n"); big.textContent = s.pct + "%"; big.classList.toggle("low", s.pct < 100);

@@ -41,8 +41,13 @@ class ChaosEngine:
             if self.rng.random() >= prob:
                 return False
         self.counts[key] = self.counts.get(key, 0) + 1
-        self.store.add_event("fault_injected", call.run_id, call.step_id, call.agent_id, call.tool,
-                             {"fault": rule["fault"], "reason": rule["fault"]})
+        detail = {"fault": rule["fault"], "reason": rule["fault"], "tool": call.tool}
+        params = rule.get("params") or {}
+        if rule["fault"] in ("inject_prompt", "wrong_value"):
+            key = "text" if rule["fault"] == "inject_prompt" else "value"
+            detail["field"] = params.get("field")
+            detail[key] = params.get(key)
+        self.store.add_event("fault_injected", call.run_id, call.step_id, call.agent_id, call.tool, detail)
         return True
 
     def pre(self, call: ToolCall) -> bool:

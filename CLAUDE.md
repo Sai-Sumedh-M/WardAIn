@@ -1570,3 +1570,207 @@ all previous metrics unchanged; escalation report committed; console: with Human
 `prompt_injection_ambiguous --mode on --runs 1 --demo` and the item appears in "Needs your decision", Block releases the
 sanitized record and the run completes; README + docs/how-it-works.md updated (human-on-the-loop section + judge Q&A);
 CLAUDE.md/DECISIONS.md updated; commit and push.
+
+
+## 27. Phase 10: Operator console redesign + live Threat Feed (demo polish)
+
+Goal: (1) redesign BOTH the operator console (`gateway/static/dashboard.html`) and the Streamlit scorecard
+(`dashboard/app.py`) with a single, deliberate visual identity that does NOT look templated/AI-generated;
+(2) when an attack happens, show EXACTLY what is being attempted — including the injected prompt text — as a
+live, color-coded feed with WardAIn's verdict. Rules from section 0 apply. NO new dependencies, NO external
+CDNs or web fonts: the console stays a single offline HTML file with all CSS/JS inline.
+
+**This is a restyle + one new panel + one additive backend field. Do NOT change, rename, or remove any of:**
+event TYPE strings, reason strings, JSON response keys, metric keys, run status values, admin endpoints, the
+admin-token flow (token is typed in, never hard-coded), poll cadences, Python function names, or any test name.
+All existing tests must still pass. The scorecard reads `tool_state`, not event detail, so it is unaffected.
+Work in order; after each task run `pytest -q`, then commit.
+
+---------------------------------------------------------------------------------------------------
+### 27.0 Design direction (read first — the WHOLE point is to not look AI-made)
+
+Concept: **"Instrument."** WardAIn is a safety-critical containment system, so it looks like an industrial
+control panel / glass cockpit: calm and monochrome by default, with ONE signal color (alarm red) reserved for
+live threats so the eye goes straight to them. This is deliberately NOT the neon "security operations center"
+look. Spend all boldness in one place (the live threat + the containment readout); keep everything else quiet.
+
+**Forbidden AI-tells (do not produce any of these):**
+- tinted near-black (#0a0e14 / #0B0B0B / #111) with a single acid-green or neon accent;
+- content chopped into identical rounded cards, one border-radius on everything, the same soft grey drop-shadow
+  under each (the "SaaS card kit"). Use tonal steps + hairline rules + whitespace to separate, not boxes;
+- ALL-CAPS eyebrow labels above headings; `A · B · C` middle-dot meta strings; `WORD — fragment` spaced-em-dash
+  labels; a monospace face for small text labels; a `→` appended to button/link text; accenting a single word
+  in a heading in a different color.
+Monospace is allowed in exactly ONE place: the attack payload block (it is literally code). Everywhere else use
+the proportional UI face.
+
+**Tokens — color** (define as CSS variables on `:root`, use everywhere; dark, but a real slate hue, not black):
+```
+--ink-900:#1b2127;  /* page background, deep slate */
+--ink-800:#222a31;  /* the few raised surfaces (header strip, payload block) */
+--ink-700:#2b343d;  /* subtle fills */
+--line:   #323d47;  /* hairline rules */
+--text:   #e8e4dc;  /* primary text, warm off-white (never pure #fff) */
+--muted:  #93a0ac;  /* secondary text */
+--alarm:  #e5484d;  /* LIVE THREAT only (deep safety red, not neon) */
+--caution:#e0a008;  /* human review / deviation (amber) */
+--safe:   #4fa08b;  /* contained / neutralized / success (muted viridian) */
+--brand:  #7e9cb8;  /* WardAIn wordmark + containment actions (steel blue) */
+```
+**Tokens — type** (offline; demo runs on the user's Mac, so target Mac faces with graceful fallback):
+- UI + numbers: `font-family:"Avenir Next","Avenir","Segoe UI",system-ui,sans-serif;` Use
+  `font-feature-settings:"tnum" 1;` on all numeric readouts so figures align.
+- Attack payload ONLY: `font-family:"Menlo",ui-monospace,monospace;`
+- Type scale (approx 1.25 modular, sentence case everywhere): hero number 56px/600/letter-spacing -0.02em;
+  big counters 30px/600; section title 15px/600; row title 14px/600; body 14px/400; meta 12.5px/500 muted;
+  payload 13px/400. Line-height 1.4 body, 1.1 on big numbers. Line length < 72ch for any prose.
+- Weights: use 400/500/600 only. Do not use 700+ (heavy weights read as default).
+**Tokens — shape/space:** 8px spacing grid; page gutter 28px; section gap 24px. Radius policy that AVOIDS the
+uniform look: functional elements 3px; the status pill is the ONE fully-round element (999px); payload block
+2px. Prefer NO drop-shadows — separate with `--line` hairlines and the tonal steps above. One soft shadow is
+allowed under the sticky header only.
+
+---------------------------------------------------------------------------------------------------
+### 27.1 Backend: make the attack payload visible (additive) — do this first
+
+The feed needs the injected text. Read `gateway/chaos.py` and `gateway/pipeline.py`, find where the
+`fault_injected` event is emitted (pipeline section 11, steps 6 and 10). Ensure its `detail` includes: `fault`
+(type string, e.g. `"inject_prompt"`), `tool` (the tool hit), and — for `inject_prompt` only — `field` and
+`text` (the exact injected string); for `wrong_value`, `field` and `value`. PURELY ADDITIVE: add keys if
+missing, never remove existing keys (keep `reason` if present). If a test asserts the detail by exact-dict
+equality, relax it to a subset check (expected keys/values PRESENT), weakening nothing else. Do not change when
+or how often `fault_injected` fires (it already fires in both off and on modes — that is what lets the feed show
+the same attack arriving with WardAIn off vs on). Verify via `GET /admin/events?run_id=...`.
+Commit: "fault_injected carries injected payload for the console".
+
+---------------------------------------------------------------------------------------------------
+### 27.2 Console layout (break the boxy feeling)
+
+Single column on a `--ink-900` page, max-width 1100px, centered, 28px gutters; collapses cleanly to ~900px
+(projector) and to mobile. Top to bottom:
+
+1. **Header strip** (sticky): a thin `--ink-800` bar, 1px bottom hairline, one soft shadow. Left: "WardAIn" in
+   `--brand` 600, then a 1px vertical rule, then "Zero-trust control plane" in `--muted`. Right: the status pill
+   (27.3), the admin-token field, and the Human review ON/OFF toggle (Phase 9) — restyle, keep behaviour. Lay
+   the right-side items along the strip separated by vertical hairlines, NOT as boxed cards.
+2. **Containment readout** (the hero — the most characteristic thing): a calm full-width band, no border, just
+   generous vertical space on the `--ink-900` page. A single large number (hero size, tabular) = the Containment
+   percent (27.3), with a quiet label "damage contained" beneath, and one plain-language state line to its right
+   (e.g. "All actions within policy" when calm; "3 threats contained, 0 leaked" when active). The number is
+   `--safe` at 100%, `--caution` below. This is the only hero element — keep it uncluttered.
+3. **Live counters row**: three readouts (Threats seen / Blocked & neutralized / Agents quarantined) as a
+   horizontal cockpit strip separated by `--line` hairlines — numbers in tabular figures, small muted labels
+   below. Not boxes.
+4. **Needs your decision** (approvals, Phase 9) — see 27.5, shown only when pending.
+5. **Threat feed** (27.4) — the ledger.
+6. **Controls** (agent pause/resume/quarantine/halt, halt-all/resume-all, run selector) — restyled.
+7. **Raw event log** — collapsible `<details>`, closed by default, containing the full flat event list.
+
+---------------------------------------------------------------------------------------------------
+### 27.3 Status pill + counters (derive every poll)
+
+Pill (the one fully-round, the one element that may glow): from `GET /admin/config` — `global_halt==true` →
+"Halted" in `--alarm`; `mode=="off"` → "Monitor off" in `--muted`; else "Armed" in `--safe` with a slow calm
+glow. Sentence case, not caps.
+Counters/containment recompute each poll from the events loaded for the selected run (or recent runs if none):
+- Threats seen = count of events in the ATTACK class (27.4 table).
+- Blocked & neutralized = count of BLOCKED + NEUTRALIZED + CONTAINMENT + REMEDIATION rows.
+- Agents quarantined = count of `agent_quarantined`.
+- Containment % = `round(100 * (blocked_neutralized_contained) / max(1, threats_seen))`.
+
+---------------------------------------------------------------------------------------------------
+### 27.4 The Threat feed (a ledger, not cards)
+
+Title "Threat feed" (sentence case, `--text` 600, with a 1px hairline under it). Driven by the SAME events poll
+(keep cadence). Newest on top, cap 50 rows, each row animates in (27.6). A row is a horizontal LEDGER line, not
+a boxed card: a left **3px severity tick** in the row's accent color, then a fixed-width time gutter (relative
+time, e.g. "2s ago", in `--muted` tabular), then icon + title, then the payload/detail, then a small verdict
+pill on the right. Rows are separated by 1px `--line` hairlines only — no per-row background, border, or shadow.
+Events not in this table do not appear in the feed (they remain in the raw log). Classify by `type` + the
+`detail` discriminator:
+
+| Event (discriminator) | Class | Tick color | Icon | Title | Show | Verdict pill |
+|---|---|---|---|---|---|---|
+| `fault_injected` fault=="inject_prompt" | ATTACK | alarm | ⚠ | "Prompt injection planted in `<field>`" | injected `text` in payload block | — |
+| `fault_injected` fault=="corrupt" | ATTACK | alarm | ⚠ | "Corrupted tool output injected" | `tool` | — |
+| `fault_injected` fault=="wrong_value" | ATTACK | alarm | ⚠ | "Tampered value injected into `<field>`" | `value` | — |
+| `identity_failed` | ATTACK | alarm | shield | "Impersonation attempt (`<reason>`)" | agent_id | "Blocked" (safe) |
+| `replay_blocked` | ATTACK | alarm | shield | "Replay attack blocked" | agent_id | "Blocked" (safe) |
+| `plan_deviation` | ATTACK | caution | bend-arrow | "Agent went off-plan" | tool + args | "Flagged" (caution) |
+| `anomaly_detected` kind=="prompt_injection" | ATTACK | alarm | ⚠ | "Injection detected in `<field>`" | field | "Caught" (safe) |
+| `anomaly_detected` kind=="monitor_rule" | ATTACK | alarm | target | "Monitor rule `<rule>` tripped" | rule | "Caught" (safe) |
+| `anomaly_detected` kind=="tool_unhealthy" | INFO | caution | target | "Tool unhealthy, circuit opening" | tool | — |
+| `policy_blocked` | BLOCKED | alarm | stop | "Policy blocked (`<reason>`)" | tool + args | "Blocked" (safe) |
+| `guard_blocked` reason=="pii_egress" | BLOCKED | alarm | stop | "PII exfiltration blocked" | tool + args | "Blocked" (safe) |
+| `guard_blocked` reason=="loop_detected" | BLOCKED | alarm | stop | "Runaway loop blocked" | tool | "Blocked" (safe) |
+| `guard_blocked` reason=="invalid_args" | BLOCKED | alarm | stop | "Malformed call blocked" | tool | "Blocked" (safe) |
+| `guard_blocked` (other) | BLOCKED | alarm | stop | "Guard blocked (`<reason>`)" | tool | "Blocked" (safe) |
+| `injection_sanitized` | NEUTRALIZED | safe | spark | "Injected instruction removed from `<field>`" | "via `<layer>`" | "Neutralized" (safe) |
+| `guard_unavailable` | INFO | caution | dot | "NVIDIA guard unavailable, fail-`<open/closed>`" | layer | — |
+| `review_requested` | REVIEW | caution | hand | "Escalated to a human (NVIDIA models disagree)" | fields + flagged_by | "Awaiting human" (caution) |
+| `review_decided` | REVIEW | safe | hand | "Human decision: `<decision>`" | by | decision (safe if sanitized) |
+| `agent_quarantined` | CONTAINMENT | brand | hex | "Agent quarantined: `<agent_id>`" | rule if present | "Contained" (brand) |
+| `agent_halted` | CONTAINMENT | brand | square | "Agent halted: `<agent_id>`" | — | "Contained" (brand) |
+| `global_halt` | CONTAINMENT | alarm | square | "Kill switch: all agents halted" | — | "Halted" (alarm) |
+| `rollback_started` | REMEDIATION | brand | cycle | "Remediation started" | tainted step count | — |
+| `compensation_applied` | REMEDIATION | brand | cycle | "Remediated: `<undo_tool>`" | step_id | "Undone" (safe) |
+| `rollback_completed` | REMEDIATION | safe | check | "Remediation complete (`<compensated>` actions undone)" | next_plan_index | "Restored" (safe) |
+
+Icons: use simple inline SVG glyphs or restrained Unicode (offline). Keep them single-color (currentColor set to
+the tick color), ~14px, not emoji-heavy. The payload block: `--ink-800` fill, 2px radius, `--text` Menlo 13px,
+10px padding. For the inject_prompt row, render the injected `text` LITERALLY and highlight any INJECTION_PATTERNS
+substring with a `<mark>` (alarm-tinted background, `--text` foreground). SECURITY: payload is attacker-controlled
+— insert it via `textContent`/`createTextNode` only, never `innerHTML`; apply the `<mark>` by splitting the
+string on the match and inserting each piece as a text node so no markup from the payload can execute.
+
+Demo contrast to narrate: OFF mode shows the red "Prompt injection planted" row (the attack is real) but no
+Neutralized/Blocked follow-up, so Containment sits below 100%. ON mode shows the same row followed by a
+Neutralized/Contained row and Containment reaches 100%.
+
+---------------------------------------------------------------------------------------------------
+### 27.5 Preserve existing panels (restyle only)
+
+Keep behaviour, restyle to the tokens: the **Needs your decision** approvals panel (Phase 9: 1 s poll, data_review
+vs action, NVIDIA-safety / Nemotron-judge verdict pills, countdown, Block / Allow + confirm) — render it as a
+distinct hairlined section with a `--caution` left tick, not a drop-shadow card; the **agent controls** and run
+selector as quiet text buttons (1px `--line` border, `--ink-800` hover, no gradients); the **raw event log** as a
+collapsed `<details>`.
+
+---------------------------------------------------------------------------------------------------
+### 27.6 Motion (one orchestrated moment + the threat reveal; nothing else)
+
+- Page load, once: counters count up from 0 to their value over ~500ms, and the Armed pill fades its glow in.
+  No fade-up/slide on sections, no hover-lift on rows or buttons (those are the generic defaults).
+- New threat-feed row: a 200ms ease-out entrance (opacity 0→1, translateY(-4px)→0) plus a one-shot ~500ms tick
+  brightness flash in the row's accent color. That is the only recurring motion.
+- Armed pill: a slow 2.4s calm opacity/box-shadow pulse in `--safe`.
+Wrap ALL motion in `@media (prefers-reduced-motion: no-preference){...}`; with reduced motion, rows appear
+statically and nothing pulses or counts up. Transform/opacity/box-shadow only, so a projector holds 60fps.
+
+---------------------------------------------------------------------------------------------------
+### 27.7 Streamlit scorecard — match the identity
+
+Create `.streamlit/config.toml`: `[theme] base="dark"`, `primaryColor="#7e9cb8"`, `backgroundColor="#1b2127"`,
+`secondaryBackgroundColor="#222a31"`, `textColor="#e8e4dc"`, `font="sans serif"`. In `dashboard/app.py`, inject
+one `st.markdown(..., unsafe_allow_html=True)` CSS block that: sets the Avenir Next stack and tabular figures;
+hides the default Streamlit top menu, footer, and "Deploy" chrome (they shout "framework default"); styles
+`st.metric` to the tokens (no boxes — hairline separation). Present the headline OFF-vs-ON results as a row of
+`st.metric` with deltas (residual damage 4→0, remediation fidelity 100%, leakage 18→0, blocked rates), then the
+full scorecard table below. Do NOT change which files it reads, any metric key, or the numbers. No new deps.
+
+---------------------------------------------------------------------------------------------------
+### 27.8 Definition of done
+1. `pytest -q` passes; official scorecard and redteam outputs byte-unchanged; all existing console behaviour
+   (token, toggles, approvals Block/Allow, controls) works exactly as before.
+2. `fault_injected` carries `fault`/`tool` and, for inject_prompt, `field`/`text` (verified via `GET /admin/events`).
+3. Live check: `prompt_injection --mode off --runs 1 --demo` → feed shows a red "Prompt injection planted in
+   notes" row with the exact injected text, Containment < 100%. Same `--mode on` → the arrival row is followed by
+   a Neutralized/Blocked row and Containment = 100%. `compromised_agent --mode on --runs 1 --demo` → feed shows
+   deviation → quarantine → Remediation rows; quarantined counter increments.
+4. Payload text is HTML-escaped (no markup from the payload executes); the dangerous substring is highlighted via
+   `<mark>` applied by text-node splitting, not raw innerHTML.
+5. Console is a single offline HTML file (no external fetches for fonts/scripts/styles); Streamlit uses no new deps.
+6. Visual check against 27.0: none of the forbidden AI-tells present; monospace only in the payload block; one
+   hero element (the containment readout); separation by hairlines/tone, not a uniform card grid.
+7. Update README + docs/how-it-works.md with one line; update CLAUDE.md/DECISIONS.md.
+8. Commit "Redesign operator console and scorecard; add live Threat Feed" and push.

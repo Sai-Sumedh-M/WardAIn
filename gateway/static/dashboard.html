@@ -86,6 +86,8 @@ h2 .aside { font-weight: 400; font-size: 12.5px; color: var(--muted); }
 .row .tick { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tc); color: var(--tc); }
 .row.alarm { --tc: var(--alarm); } .row.caution { --tc: var(--caution); } .row.safe { --tc: var(--safe); } .row.brand { --tc: var(--brand); }
 .row .when { font-size: 12.5px; font-weight: 500; color: var(--muted); padding-top: 1px; }
+.runtag { font-size: 11.5px; font-weight: 500; margin-top: 2px; color: var(--muted); }
+.runtag.off { color: var(--caution); } .runtag.on { color: var(--safe); }
 .row .title { font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
 .row .title svg { flex: none; width: 14px; height: 14px; color: var(--tc); }
 .row .detail { font-size: 12.5px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
@@ -229,7 +231,7 @@ svg .lbl { fill: var(--muted); }
 
   <div id="live" class="view">
     <div class="hero">
-      <div><div class="big" id="hero-n">100%</div><div class="lbl">damage contained</div></div>
+      <div><div class="big" id="hero-n">100%</div><div class="lbl" id="hero-lbl">damage contained</div></div>
       <div class="state" id="hero-state">All actions within policy</div>
     </div>
     <div class="counters">
@@ -533,6 +535,8 @@ function buildRow(e, c) {
   r.addEventListener("animationend", (ev) => { if (ev.target === r) r.classList.remove("enter"); });
   const tick = document.createElement("span"); tick.className = "tick";
   const when = document.createElement("span"); when.className = "when"; when.textContent = relTime(e.ts);
+  const run = runs.find((x) => x.run_id === e.run_id);
+  if (run) { const tg = document.createElement("div"); tg.className = "runtag " + run.mode; tg.textContent = "WardAIn " + run.mode; when.appendChild(tg); }
   const body = document.createElement("div");
   const title = document.createElement("div"); title.className = "title";
   title.appendChild(icon(c.ic)); const tt = document.createElement("span"); tt.textContent = c.title; title.appendChild(tt);
@@ -544,16 +548,28 @@ function buildRow(e, c) {
   return r;
 }
 const rowCache = new Map();
+function runGroup() {
+  // The newest run plus earlier runs of the same scenario started within 2 minutes (e.g. one OFF and one ON from a single command).
+  if (!runs.length) return [];
+  const top = runs[0];
+  return runs.filter((r) => r.scenario === top.scenario && r.started_at >= top.started_at - 120);
+}
+function within(list, e) {
+  if (e.run_id) return list.some((r) => r.run_id === e.run_id);
+  const lo = Math.min(...list.map((r) => r.started_at)), hi = Math.max(...list.map((r) => r.ended_at || Date.now() / 1000)) + 5;
+  return e.ts >= lo && e.ts <= hi;
+}
 function scopedEvents() {
-  const sel = $("run-select").value || "latest";
+  const sel = $("run-select").value || "group";
   if (sel === "all") return events;
-  const run = sel === "latest" ? runs[0] : runs.find((r) => r.run_id === sel);
-  if (!run) return [];
-  const end = run.ended_at || Date.now() / 1000 + 5;
-  return events.filter((e) => e.run_id === run.run_id || (!e.run_id && e.ts >= run.started_at && e.ts <= end + 5));
+  const list = sel === "group" ? runGroup() : sel === "latest" ? runs.slice(0, 1) : runs.filter((r) => r.run_id === sel);
+  return list.length ? events.filter((e) => within(list, e)) : [];
 }
 function renderThreats() {
-  const scoped = scopedEvents(), s = summarize(scoped);
+  const scoped = scopedEvents(), sel = $("run-select").value || "group";
+  const heroEvents = sel === "group" && runs.length ? scoped.filter((e) => within(runs.slice(0, 1), e)) : scoped;
+  const s = summarize(heroEvents);
+  $("hero-lbl").textContent = sel === "group" && runGroup().length > 1 ? `damage contained, latest run (WardAIn ${runs[0].mode})` : "damage contained";
   const items = [];
   for (const e of scoped) { const c = classify(e); if (c) items.push([e, c]); }  // scoped is newest first
   const root = $("threat-feed"), shown = items.slice(0, MAX_ROWS), keep = new Set(), order = [];
@@ -564,7 +580,7 @@ function renderThreats() {
       keep.add(e.event_id);
       let el = rowCache.get(e.event_id);
       if (!el) { el = buildRow(e, c); rowCache.set(e.event_id, el); }
-      else el.querySelector(".when").textContent = relTime(e.ts);
+      else el.querySelector(".when").firstChild.textContent = relTime(e.ts);
       order.push(el);
     }
     for (const [id, el] of rowCache) if (!keep.has(id)) { el.remove(); rowCache.delete(id); }
@@ -586,13 +602,13 @@ function setCount(el, v) {
   requestAnimationFrame(step);
 }
 function renderRunSelect() {
-  const sel = $("run-select"), cur = sel.value || "latest", key = runs.slice(0, 20).map((r) => r.run_id).join(",");
+  const sel = $("run-select"), cur = sel.value || "group", key = runs.slice(0, 20).map((r) => r.run_id).join(",");
   if (sel.dataset.key === key) return;
   sel.dataset.key = key; sel.textContent = "";
   const add = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.appendChild(o); };
-  add("latest", "Latest run"); add("all", "All loaded events");
+  add("group", "Latest scenario, all runs"); add("latest", "Latest run only"); add("all", "All loaded events");
   for (const r of runs.slice(0, 20)) add(r.run_id, `${r.scenario} (WardAIn ${r.mode})`);
-  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "latest";
+  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "group";
 }
 
 function renderRun(run) {

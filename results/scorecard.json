@@ -1,5 +1,5 @@
 {
-  "generated_at": 1793113960.319268,
+  "generated_at": 1793206637.310281,
   "metrics": [
     {
       "metric": "impersonation_block_rate",
@@ -48,14 +48,14 @@
       "scenario": "tool_outage",
       "target": "ON > 0",
       "off": null,
-      "on": 641.012
+      "on": 647.461
     },
     {
       "metric": "mttr_ms",
       "scenario": "tool_outage",
       "target": "ON > 0",
       "off": null,
-      "on": 2436.937
+      "on": 2441.791
     },
     {
       "metric": "duplicate_refunds",
@@ -76,7 +76,7 @@
       "scenario": "runaway_loop",
       "target": "ON low (OFF n/a)",
       "off": null,
-      "on": 0.863
+      "on": 0.879
     },
     {
       "metric": "post_kill_leakage",
@@ -125,7 +125,7 @@
       "scenario": "normal_run",
       "off": null,
       "target": "low",
-      "on": 0.483
+      "on": 0.383
     },
     {
       "metric": "task_success_rate",

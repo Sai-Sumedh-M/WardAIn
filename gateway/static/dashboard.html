@@ -6,263 +6,298 @@
 <title>WardAIn Console</title>
 <style>
 :root {
-  --paper: #e8ebe8; --panel: #f5f7f5; --ink: #17222c; --muted: #5d6b76; --line: #c9d0cc;
-  --active: #1e7b6c; --paused: #5d7390; --quarantined: #c47a0c; --halted: #b42318;
-  --active-bg: #d5ebe6; --paused-bg: #dde4ee; --quarantined-bg: #f6e6c8; --halted-bg: #f6d9d5;
-  --focus: #0b57d0;
-  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #12191f; --panel: #1a232b; --ink: #e3e9ea; --muted: #93a1ab; --line: #2e3b45;
-    --active: #4fc3ae; --paused: #8fa6c4; --quarantined: #e8a43a; --halted: #ff7b6e;
-    --active-bg: #173a35; --paused-bg: #26323f; --quarantined-bg: #3b2e14; --halted-bg: #43201d;
-    --focus: #8ab4ff;
-  }
-}
-:root[data-theme="dark"] {
-  --paper: #12191f; --panel: #1a232b; --ink: #e3e9ea; --muted: #93a1ab; --line: #2e3b45;
-  --active: #4fc3ae; --paused: #8fa6c4; --quarantined: #e8a43a; --halted: #ff7b6e;
-  --active-bg: #173a35; --paused-bg: #26323f; --quarantined-bg: #3b2e14; --halted-bg: #43201d;
-  --focus: #8ab4ff;
+  --ink-900:#1b2127; --ink-800:#222a31; --ink-700:#2b343d; --line:#323d47;
+  --text:#e8e4dc; --muted:#93a0ac; --alarm:#e5484d; --caution:#e0a008; --safe:#4fa08b; --brand:#7e9cb8;
+  --ui: "Avenir Next","Avenir","Segoe UI",system-ui,sans-serif;
+  --code: "Menlo",ui-monospace,monospace;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); }
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+body { background: var(--ink-900); color: var(--text); font: 400 14px/1.4 var(--ui); font-feature-settings: "tnum" 1; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 button { font: inherit; color: inherit; cursor: pointer; }
-.mono { font-family: var(--mono); }
 .muted { color: var(--muted); }
+.meta { font-size: 12.5px; font-weight: 500; color: var(--muted); }
 
-/* header */
-header { position: sticky; top: 0; z-index: 5; background: var(--ink); color: var(--paper);
-  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; padding: 10px 16px; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) header { background: #0b1015; color: #e3e9ea; } }
-.brand { font-size: 18px; font-weight: 700; letter-spacing: .01em; }
-.brand span { font-weight: 400; opacity: .6; margin-left: 8px; font-size: 13px; }
-.mode { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid currentColor;
-  border-radius: 3px; font-weight: 600; opacity: .95; }
-.mode i { width: 9px; height: 9px; border-radius: 50%; background: #8a949c; }
-.mode.on i { background: #4fc3ae; } .mode.off i { background: #ff7b6e; }
-.mode.off { border-style: dashed; }
-.spacer { flex: 1; }
-nav { display: flex; gap: 4px; }
-nav button { background: none; border: 0; padding: 6px 12px; border-bottom: 2px solid transparent; opacity: .7; }
-nav button[aria-selected="true"] { opacity: 1; border-bottom-color: currentColor; font-weight: 600; }
-.halt-plate { display: flex; gap: 8px; align-items: stretch; padding: 4px; border: 1px solid #ffffff40; border-radius: 6px; }
-.halt-btn { background: #d92d20; color: #fff; border: 0; border-radius: 4px; padding: 8px 18px; font-weight: 800;
-  letter-spacing: .06em; font-size: 15px; box-shadow: inset 0 -3px 0 #00000040; }
-.halt-btn:active { transform: translateY(1px); box-shadow: none; }
-.resume-btn { background: transparent; border: 1px solid #ffffff60; border-radius: 4px; padding: 8px 12px; color: inherit; }
-.resume-btn:disabled { opacity: .35; cursor: default; }
-body.halted .halt-btn { animation: throb 1.2s ease-in-out infinite; }
-@keyframes throb { 50% { background: #8f1a10; } }
-@media (prefers-reduced-motion: reduce) { body.halted .halt-btn { animation: none; background: #8f1a10; } }
-.tokenbar { display: flex; gap: 6px; align-items: center; font-size: 12px; opacity: .85; }
-.tokenbar button { background: none; border: 0; color: inherit; text-decoration: underline; padding: 0; }
-.conn { font-size: 12px; font-family: var(--mono); opacity: .85; }
-.conn.bad { color: #ff9b91; opacity: 1; }
+/* header strip */
+header { position: sticky; top: 0; z-index: 5; background: var(--ink-800); border-bottom: 1px solid var(--line);
+  box-shadow: 0 2px 10px rgba(0,0,0,.28); }
+.strip { max-width: 1100px; margin: 0 auto; padding: 0 28px; display: flex; flex-wrap: wrap; align-items: stretch; min-height: 48px; }
+.strip > * { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-left: 1px solid var(--line); }
+.strip > :first-child { border-left: 0; padding-left: 0; }
+.strip .spacer { flex: 1; border-left: 0; padding: 0; }
+.brand { font-size: 16px; font-weight: 600; color: var(--brand); }
+.tag { font-size: 13px; color: var(--muted); }
+nav { gap: 2px; }
+nav button { background: none; border: 0; border-bottom: 2px solid transparent; padding: 6px 10px; color: var(--muted); }
+nav button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--brand); font-weight: 600; }
+.pill { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 3px 12px; font-size: 12.5px;
+  font-weight: 600; border: 1px solid var(--pc, var(--muted)); color: var(--pc, var(--muted)); }
+.pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--pc, var(--muted)); }
+.pill.armed { --pc: var(--safe); } .pill.halted { --pc: var(--alarm); } .pill.off { --pc: var(--muted); }
+.plain { background: none; border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; font-size: 13px; font-weight: 500; }
+.plain:hover:not(:disabled) { background: var(--ink-800); }
+header .plain:hover:not(:disabled) { background: var(--ink-700); }
+.plain:disabled { opacity: .35; cursor: default; }
+.plain.alarm { border-color: var(--alarm); color: var(--alarm); }
+.plain.brand { border-color: var(--brand); color: var(--brand); }
+.plain.safe { border-color: var(--safe); color: var(--safe); }
+.review-toggle[aria-pressed="true"] { border-color: var(--caution); color: var(--caution); }
+.badge { min-width: 18px; padding: 0 6px; border-radius: 999px; background: var(--caution); color: var(--ink-900);
+  font-size: 12px; font-weight: 600; text-align: center; }
+.badge[hidden] { display: none; }
+.conn { font-size: 12.5px; color: var(--muted); }
+.conn.bad { color: var(--alarm); }
+.linkish { background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12.5px; }
 
-.banner { display: none; background: var(--halted); color: #fff; padding: 8px 16px; font-weight: 600; }
+.banner { display: none; background: var(--alarm); color: var(--ink-900); padding: 8px 28px; font-weight: 600; }
 body.halted .banner { display: block; }
 
-main { padding: 16px; max-width: 1400px; margin: 0 auto; }
-section.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; margin-bottom: 16px; }
-h2 { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
-.view[hidden] { display: none; }
+main { max-width: 1100px; margin: 0 auto; padding: 0 28px 64px; }
+section { margin-top: 24px; }
+h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+h2 .aside { font-weight: 400; font-size: 12.5px; color: var(--muted); }
+.view[hidden], [hidden] { display: none !important; }
+.nodata { color: var(--muted); padding: 12px 0; }
 
 /* gate */
 #gate { max-width: 460px; margin: 48px auto; }
 #gate form { display: flex; gap: 8px; margin-top: 12px; }
-#gate input { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink); font: inherit; }
-#gate button { background: var(--ink); color: var(--paper); border: 0; border-radius: 4px; padding: 8px 14px; }
-#gate .err { color: var(--halted); margin-top: 8px; min-height: 1.4em; }
+#gate input { flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 3px; background: var(--ink-800); color: var(--text); font: inherit; }
+#gate .err { color: var(--alarm); margin-top: 8px; min-height: 1.4em; }
 
-/* agent pipeline */
-.pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
-.lane { position: relative; min-width: 0; }
-.lane:not(:last-child)::after { content: ""; position: absolute; right: -22px; top: 30px; width: 16px; height: 16px;
-  border-top: 2px solid var(--muted); border-right: 2px solid var(--muted); transform: rotate(45deg) scale(.6); opacity: .7; }
-.lane h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--muted); }
-.agent { border: 1px solid var(--line); border-left: 6px solid var(--sc, var(--line)); background: var(--bg, var(--panel));
-  border-radius: 4px; padding: 8px 10px; margin-bottom: 8px; }
-.agent[data-status="active"] { --sc: var(--active); --bg: var(--active-bg); }
-.agent[data-status="paused"] { --sc: var(--paused); --bg: var(--paused-bg); }
-.agent[data-status="quarantined"] { --sc: var(--quarantined); --bg: var(--quarantined-bg); }
-.agent[data-status="halted"] { --sc: var(--halted); --bg: var(--halted-bg); }
-.agent.old { opacity: .72; }
-.agent .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.agent .id { font-family: var(--mono); font-weight: 600; word-break: break-all; }
-.agent .st { font-weight: 700; color: var(--sc); font-size: 12px; }
-.agent .tag { font-size: 11px; color: var(--muted); }
-.agent .ctl { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-.agent .ctl button { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+/* containment readout */
+.hero { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 40px; padding: 48px 0 32px; }
+.hero .big { font-size: 56px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; color: var(--safe); }
+.hero .big.low { color: var(--caution); }
+.hero .lbl { font-size: 12.5px; font-weight: 500; color: var(--muted); margin-top: 4px; }
+.hero .state { font-size: 18px; max-width: 40ch; }
+.counters { display: flex; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.counters > div { flex: 1; padding: 16px 0 14px 20px; border-left: 1px solid var(--line); }
+.counters > div:first-child { border-left: 0; padding-left: 0; }
+.counters .n { font-size: 30px; font-weight: 600; line-height: 1.1; }
+.counters .l { font-size: 12.5px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+
+/* threat feed ledger */
+.feed { max-height: 640px; overflow-y: auto; }
+.row { --tc: var(--muted); position: relative; display: grid; grid-template-columns: 64px minmax(0,1fr) auto; gap: 4px 16px;
+  padding: 10px 0 10px 16px; border-bottom: 1px solid var(--line); align-items: start; }
+.row .tick { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--tc); color: var(--tc); }
+.row.alarm { --tc: var(--alarm); } .row.caution { --tc: var(--caution); } .row.safe { --tc: var(--safe); } .row.brand { --tc: var(--brand); }
+.row .when { font-size: 12.5px; font-weight: 500; color: var(--muted); padding-top: 1px; }
+.row .title { font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.row .title svg { flex: none; width: 14px; height: 14px; color: var(--tc); }
+.row .detail { font-size: 12.5px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+.payload { margin-top: 6px; background: var(--ink-800); border-radius: 2px; padding: 10px; font: 400 13px/1.45 var(--code);
+  color: var(--text); overflow-wrap: anywhere; white-space: pre-wrap; max-width: 72ch; }
+mark { background: rgba(229,72,77,.35); color: var(--text); padding: 0 1px; }
+.vp { font-size: 12px; font-weight: 600; padding: 1px 10px; border-radius: 999px; border: 1px solid var(--vc); color: var(--vc); white-space: nowrap; }
+.vp.safe { --vc: var(--safe); } .vp.caution { --vc: var(--caution); } .vp.brand { --vc: var(--brand); } .vp.alarm { --vc: var(--alarm); }
+.runpick { display: flex; align-items: center; gap: 8px; }
+select { background: var(--ink-800); color: var(--text); border: 1px solid var(--line); border-radius: 3px; padding: 3px 6px; font: inherit; font-size: 13px; }
+
+/* needs your decision */
+#decisions { border-left: 3px solid var(--caution); padding-left: 16px; }
+#decisions h2 { border-bottom-color: var(--line); }
+.item { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.item:last-child { border-bottom: 0; }
+.item .im { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+.item .im b { color: var(--text); font-weight: 600; }
+.item .field { margin: 6px 0; }
+.item .quote { background: var(--ink-800); border-radius: 2px; padding: 10px; font: 400 13px/1.45 var(--code); overflow-wrap: anywhere; max-width: 72ch; }
+.item mark { font-weight: 400; }
+.verdicts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.verdict { font-size: 12px; font-weight: 600; padding: 1px 10px; border-radius: 999px; border: 1px solid; }
+.verdict.unsafe { color: var(--alarm); } .verdict.safe { color: var(--safe); }
+.item .acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.item .acts button { background: none; border: 1px solid var(--line); border-radius: 3px; padding: 5px 12px; font-weight: 600; }
+.item .acts button:hover { background: var(--ink-800); }
+.item .acts button.block { border-color: var(--safe); color: var(--safe); }
+.item .acts button.allow { border-color: var(--alarm); color: var(--alarm); }
+.item .count { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+
+/* controls */
+.ctlbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.pipeline { display: grid; grid-template-columns: repeat(4, 1fr); }
+.lane { min-width: 0; padding: 12px 16px; border-left: 1px solid var(--line); }
+.lane:first-child { border-left: 0; padding-left: 0; }
+.lane h3 { margin: 0 0 8px; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+.agent { --sc: var(--muted); border-left: 3px solid var(--sc); padding: 2px 0 2px 10px; margin-bottom: 12px; }
+.agent[data-status="active"] { --sc: var(--safe); } .agent[data-status="paused"] { --sc: var(--brand); }
+.agent[data-status="quarantined"] { --sc: var(--caution); } .agent[data-status="halted"] { --sc: var(--alarm); }
+.agent.old { opacity: .7; }
+.agent .top { display: flex; justify-content: space-between; gap: 8px; }
+.agent .id { font-weight: 600; word-break: break-all; }
+.agent .st { color: var(--sc); font-size: 12.5px; font-weight: 600; }
+.agent .rp { font-size: 12px; color: var(--muted); }
+.agent .ctl { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.agent .ctl button { background: none; border: 1px solid var(--line); border-radius: 3px; padding: 1px 8px; font-size: 12.5px; }
+.agent .ctl button:hover:not(:disabled) { background: var(--ink-800); }
 .agent .ctl button:disabled { opacity: .35; cursor: default; }
-.agent .ctl button[data-act="halt"] { border-color: var(--halted); color: var(--halted); }
-.lane .empty { border: 1px dashed var(--line); border-radius: 4px; padding: 10px; color: var(--muted); font-size: 12px; }
-
-.cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
-.cols > section { margin-bottom: 0; }
-
-/* feed */
-.feed { max-height: 560px; overflow-y: auto; font-size: 12.5px; }
-.ev { display: grid; grid-template-columns: 92px 150px 96px 110px 1fr; gap: 8px; padding: 3px 6px 3px 8px;
-  border-left: 4px solid transparent; border-bottom: 1px solid var(--line); align-items: baseline; }
-.ev > * { min-width: 0; overflow-wrap: anywhere; }
-.ev .t { font-family: var(--mono); color: var(--muted); }
-.ev .ty { font-weight: 600; }
-.ev.routine { opacity: .5; }
-.ev.red { border-left-color: var(--halted); background: var(--halted-bg); }
-.ev.red .ty { color: var(--halted); }
-.ev.amber { border-left-color: var(--quarantined); background: var(--quarantined-bg); }
-.ev.amber .ty { color: var(--quarantined); }
-.ev.fx { border-left-color: var(--ink); }
-h2 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.nodata { color: var(--muted); padding: 12px 4px; }
+.lane .empty { color: var(--muted); font-size: 12.5px; }
 
 /* run + tool state */
-.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 0 0 12px; }
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 0; }
+.cols > div { padding: 0 20px; border-left: 1px solid var(--line); min-width: 0; }
+.cols > div:first-child { border-left: 0; padding-left: 0; }
+.cols h3 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 14px; margin: 0; }
 .kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
-.chip { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 700;
-  background: var(--paused-bg); color: var(--paused); }
-.chip.completed { background: var(--active-bg); color: var(--active); }
-.chip.running { background: var(--paused-bg); color: var(--paused); }
-.chip.failed, .chip.halted { background: var(--halted-bg); color: var(--halted); }
-.chip.rolled_back { background: var(--quarantined-bg); color: var(--quarantined); }
-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-th { text-align: left; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); padding: 3px 6px; }
-td { padding: 3px 6px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.chip { font-weight: 600; } .chip.completed { color: var(--safe); } .chip.failed, .chip.halted { color: var(--alarm); }
+.chip.rolled_back { color: var(--caution); } .chip.running { color: var(--brand); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--line); padding: 3px 6px 3px 0; }
+td { padding: 3px 6px 3px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+td.num, th.num { text-align: right; padding-right: 0; }
 tr.reversed td, tr.recalled td { color: var(--muted); text-decoration: line-through; }
-tr.leak td { background: var(--halted-bg); color: var(--halted); font-weight: 600; text-decoration: none; }
-.sub { margin-top: 14px; }
-.sub h2 { display: flex; justify-content: space-between; }
-
-/* human review */
-.review-toggle { background: none; border: 1px solid currentColor; border-radius: 3px; padding: 4px 10px; font-weight: 600; color: inherit; }
-.review-toggle[aria-pressed="true"] { background: var(--quarantined); border-color: var(--quarantined); color: #fff; }
-.badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 6px; border-radius: 9px; background: var(--halted);
-  color: #fff; font-size: 12px; font-weight: 700; text-align: center; }
-.badge[hidden] { display: none; }
-#decisions { border-color: var(--quarantined); border-width: 2px; }
-#decisions[hidden] { display: none; }
-.item { border: 1px solid var(--line); border-left: 6px solid var(--quarantined); background: var(--quarantined-bg);
-  border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; }
-.item:last-child { margin-bottom: 0; }
-.item .meta { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; margin-bottom: 6px; }
-.item .field { margin: 6px 0; }
-.item .quote { font-family: var(--mono); font-size: 12.5px; background: var(--panel); border: 1px solid var(--line);
-  border-radius: 3px; padding: 6px 8px; overflow-wrap: anywhere; }
-.item mark { background: var(--halted-bg); color: var(--halted); font-weight: 700; padding: 0 2px; }
-.verdicts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-.verdict { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; }
-.verdict.unsafe { background: var(--halted-bg); color: var(--halted); }
-.verdict.safe { background: var(--active-bg); color: var(--active); }
-.item .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
-.item .row button { border: 1px solid var(--line); background: var(--panel); border-radius: 3px; padding: 5px 12px; font-weight: 600; }
-.item .row button.block { border-color: var(--active); color: var(--active); }
-.item .row button.allow { border-color: var(--halted); color: var(--halted); }
-.item .count { margin-left: auto; font-family: var(--mono); font-size: 12.5px; }
+tr.leak td { color: var(--alarm); font-weight: 600; text-decoration: none; }
+details.rawlog summary { cursor: pointer; font-size: 15px; font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.rawlog .ev { display: grid; grid-template-columns: 92px 150px 96px 110px 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line);
+  font-size: 12.5px; align-items: baseline; }
+.rawlog .ev > * { min-width: 0; overflow-wrap: anywhere; }
+.rawlog .ev .ty { font-weight: 600; } .rawlog .ev.red .ty { color: var(--alarm); } .rawlog .ev.amber .ty { color: var(--caution); }
+.rawlog .ev.routine { opacity: .5; } .rawlog .ev .t { color: var(--muted); }
+.rawlog .tools { display: flex; gap: 12px; margin: 8px 0; }
+.rawlog .feedraw { max-height: 420px; overflow-y: auto; }
 
 /* scorecard */
-.scorewrap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
-.raw { font: 11px var(--mono); color: var(--muted); }
-td.off { color: var(--halted); } td.on { color: var(--active); font-weight: 600; }
-.legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
-.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; vertical-align: baseline; }
-svg text { font: 12px var(--sans); fill: var(--ink); }
+.scorewrap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 0; }
+.scorewrap > div { padding: 0 20px; border-left: 1px solid var(--line); }
+.scorewrap > div:first-child { border-left: 0; padding-left: 0; }
+.raw { font-size: 11.5px; color: var(--muted); }
+td.off { color: var(--alarm); } td.on { color: var(--safe); font-weight: 600; }
+.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; }
+svg text { font: 12px var(--ui); fill: var(--text); }
 svg .lbl { fill: var(--muted); }
 
-@media (max-width: 900px) {
-  .pipeline { grid-template-columns: 1fr 1fr; gap: 16px; }
-  .lane::after { display: none; }
-  .cols, .scorewrap { grid-template-columns: 1fr; }
-  .ev { grid-template-columns: 78px 1fr; }
-  .ev .ag, .ev .tl, .ev .rs { grid-column: 2; }
+/* motion: only when the viewer allows it */
+@media (prefers-reduced-motion: no-preference) {
+  .pill.armed { animation: glowin 600ms ease-out both, pulse 2.4s ease-in-out 600ms infinite; }
+  .row.enter { animation: rowin 200ms ease-out; }
+  .row.enter .tick { animation: flash 500ms ease-out; }
 }
-@media (max-width: 520px) { .pipeline { grid-template-columns: 1fr; } header { padding: 10px; } main { padding: 10px; } }
+@keyframes glowin { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(79,160,139,0); opacity: .85; } 50% { box-shadow: 0 0 10px 1px rgba(79,160,139,.45); opacity: 1; } }
+@keyframes rowin { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes flash { from { box-shadow: 0 0 12px 3px currentColor; filter: brightness(1.8); } to { box-shadow: none; filter: none; } }
+
+@media (max-width: 900px) {
+  .pipeline { grid-template-columns: 1fr 1fr; } .lane:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .cols, .scorewrap { grid-template-columns: 1fr; }
+  .cols > div, .scorewrap > div { border-left: 0; padding: 12px 0 0; }
+  .rawlog .ev { grid-template-columns: 78px 1fr; }
+}
+@media (max-width: 560px) {
+  .strip, main { padding-left: 16px; padding-right: 16px; } .strip > * { padding: 8px 10px; }
+  .hero .big { font-size: 44px; } .pipeline { grid-template-columns: 1fr; } .lane { border-left: 0; padding-left: 0; }
+  .counters .n { font-size: 24px; } .row { grid-template-columns: 48px minmax(0,1fr); } .row .vp { grid-column: 2; justify-self: start; }
+}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">WardAIn<span>operator console</span></div>
-  <div id="mode" class="mode" title="Gateway enforcement mode"><i></i><b>WardAIn …</b></div>
-  <nav role="tablist" aria-label="Views">
-    <button role="tab" id="tab-live" aria-selected="true" data-view="live">Live</button>
-    <button role="tab" id="tab-score" aria-selected="false" data-view="score">Scorecard</button>
-  </nav>
-  <button id="review-toggle" class="review-toggle" type="button" aria-pressed="false"
-    title="ON: ambiguous detections wait for a human decision (hitl=ambiguous, approvals manual)">Human review: OFF</button>
-  <span id="pending-badge" class="badge" hidden title="Items waiting for your decision">0</span>
-  <div class="spacer"></div>
-  <div class="tokenbar"><span id="conn" class="conn">connecting</span>
-    <button id="change-token" type="button" hidden>Change token</button></div>
-  <div class="halt-plate">
-    <button id="halt-all" class="halt-btn" type="button">HALT ALL</button>
-    <button id="resume-all" class="resume-btn" type="button">Resume all</button>
+  <div class="strip">
+    <div><span class="brand">WardAIn</span></div>
+    <div class="tag">Zero-trust control plane</div>
+    <nav role="tablist" aria-label="Views">
+      <button role="tab" id="tab-live" aria-selected="true" data-view="live">Live</button>
+      <button role="tab" id="tab-score" aria-selected="false" data-view="score">Scorecard</button>
+    </nav>
+    <div class="spacer"></div>
+    <div><span id="mode" class="pill armed" title="Gateway enforcement status"><i></i><b>Armed</b></span></div>
+    <div><button id="review-toggle" class="plain review-toggle" type="button" aria-pressed="false"
+      title="ON: ambiguous detections wait for a human decision (hitl=ambiguous, approvals manual)">Human review: OFF</button>
+      <span id="pending-badge" class="badge" hidden title="Items waiting for your decision">0</span></div>
+    <div><span id="conn" class="conn">connecting</span>
+      <button id="change-token" class="linkish" type="button" hidden>Change token</button></div>
   </div>
 </header>
 <div class="banner" role="status">Global halt is active. Every agent call is refused until you resume.</div>
 
 <main>
-  <section id="gate" class="panel" hidden>
+  <section id="gate" hidden>
     <h2>Admin token</h2>
     <div>Enter the gateway admin token to open the console. It stays in this browser tab only.</div>
     <form id="gate-form">
       <input id="token-input" type="password" autocomplete="off" aria-label="Admin token" placeholder="ADMIN_TOKEN">
-      <button type="submit">Connect</button>
+      <button class="plain" type="submit">Connect</button>
     </form>
     <div class="err" id="gate-err" role="alert"></div>
   </section>
 
   <div id="live" class="view">
-    <section class="panel" id="decisions" hidden>
-      <h2><span>Needs your decision</span><span class="muted" style="font-weight:400">unanswered data reviews are released sanitized after the timeout</span></h2>
+    <div class="hero">
+      <div><div class="big" id="hero-n">100%</div><div class="lbl">damage contained</div></div>
+      <div class="state" id="hero-state">All actions within policy</div>
+    </div>
+    <div class="counters">
+      <div><div class="n" id="c-threats">0</div><div class="l">Threats seen</div></div>
+      <div><div class="n" id="c-blocked">0</div><div class="l">Blocked and neutralized</div></div>
+      <div><div class="n" id="c-quar">0</div><div class="l">Agents quarantined</div></div>
+    </div>
+
+    <section id="decisions" hidden>
+      <h2><span>Needs your decision</span><span class="aside">unanswered data reviews are released sanitized after the timeout</span></h2>
       <div id="decision-list"></div>
     </section>
-    <section class="panel">
-      <h2>Agents</h2>
+
+    <section>
+      <h2><span>Threat feed</span>
+        <span class="runpick"><label class="aside" for="run-select">Run</label><select id="run-select" aria-label="Run"></select></span></h2>
+      <div class="feed" id="threat-feed" aria-live="off"></div>
+    </section>
+
+    <section>
+      <h2>Controls</h2>
+      <div class="ctlbar">
+        <button id="halt-all" class="plain alarm" type="button">Halt all</button>
+        <button id="resume-all" class="plain safe" type="button">Resume all</button>
+      </div>
       <div class="pipeline" id="pipeline"></div>
     </section>
-    <div class="cols">
-      <section class="panel">
-        <h2><span>Event feed (newest first)</span>
-          <label style="font-weight:400"><input type="checkbox" id="important" checked> Important only</label></h2>
-        <div class="feed" id="feed" aria-live="off"></div>
-      </section>
-      <div>
-        <section class="panel">
-          <h2>Current run</h2>
-          <div id="run"></div>
-          <div class="sub"><h2>Payments</h2><div id="payments"></div></div>
-          <div class="sub"><h2>Outbox</h2><div id="outbox"></div></div>
-        </section>
+
+    <section>
+      <div class="cols">
+        <div><h3>Current run</h3><div id="run"></div></div>
+        <div><h3>Payments</h3><div id="payments"></div></div>
+        <div><h3>Outbox</h3><div id="outbox"></div></div>
       </div>
-    </div>
+    </section>
+
+    <section>
+      <details class="rawlog">
+        <summary>Raw event log</summary>
+        <div class="tools"><label><input type="checkbox" id="important" checked> Important only</label></div>
+        <div class="feedraw" id="feed" aria-live="off"></div>
+      </details>
+    </section>
   </div>
 
   <div id="score" class="view" hidden>
-    <div class="scorewrap">
-      <section class="panel"><h2>Resilience metrics</h2><div id="metrics"></div></section>
-      <section class="panel"><h2>Task success by scenario</h2>
-        <div class="legend"><span><i style="background:var(--halted)"></i>WardAIn OFF</span><span><i style="background:var(--active)"></i>WardAIn ON</span></div>
-        <div id="bars"></div></section>
-    </div>
-    <section class="panel sub"><h2>Red-team campaign (LLM-generated attacks)</h2><div id="redteam"></div></section>
+    <section>
+      <div class="scorewrap">
+        <div><h2>Resilience metrics</h2><div id="metrics"></div></div>
+        <div><h2>Task success by scenario</h2>
+          <div class="legend"><span><i style="background:var(--alarm)"></i>WardAIn OFF</span><span><i style="background:var(--safe)"></i>WardAIn ON</span></div>
+          <div id="bars"></div></div>
+      </div>
+    </section>
+    <section><h2>Red-team campaign (LLM-generated attacks)</h2><div id="redteam"></div></section>
   </div>
 </main>
 
 <script>
 "use strict";
 const ROLES = ["planner", "retriever", "executor", "auditor"];
+const ROUTINE = new Set(["call_received", "tool_called", "checkpoint_saved"]);
 const RED = new Set(["identity_failed", "replay_blocked", "agent_not_active", "policy_blocked", "guard_blocked",
   "agent_halted", "global_halt"]);
 const AMBER = new Set(["anomaly_detected", "plan_deviation", "agent_quarantined", "rollback_started",
   "compensation_applied", "rollback_completed", "tool_error", "circuit_open", "injection_sanitized",
   "review_requested", "review_decided"]);
-const ROUTINE = new Set(["call_received", "tool_called", "checkpoint_saved"]);
-const MAX_EVENTS = 300;
+const MAX_EVENTS = 600, MAX_ROWS = 50;
 
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
@@ -271,7 +306,7 @@ const store = {
   set(v) { try { sessionStorage.setItem("wardain_admin_token", v); } catch (e) { /* keep in memory only */ } },
   clear() { try { sessionStorage.removeItem("wardain_admin_token"); } catch (e) { /* ignore */ } },
 };
-let token = store.get(), events = [], since = 0, timer = null, busy = false, lastConfig = {};
+let token = store.get(), events = [], since = 0, timer = null, busy = false, lastConfig = {}, runs = [], firstPaint = true;
 
 class AuthError extends Error {}
 async function api(path, method = "GET", body) {
@@ -299,12 +334,12 @@ function selectView(name) {
   if (name === "score" && token) { loadScorecard(); loadRedteam(); }
 }
 
-/* ---------- rendering ---------- */
+/* ---------- status pill ---------- */
 function renderMode(cfg) {
-  const on = cfg.mode !== "off", m = $("mode");
-  m.className = "mode " + (on ? "on" : "off");
-  m.querySelector("b").textContent = "WardAIn " + (on ? "ON" : "OFF");
-  const halted = !!cfg.global_halt;
+  const halted = !!cfg.global_halt, off = cfg.mode === "off", m = $("mode");
+  m.className = "pill " + (halted ? "halted" : off ? "off" : "armed");
+  m.querySelector("b").textContent = halted ? "Halted" : off ? "Monitor off" : "Armed";
+  m.title = "WardAIn " + (off ? "OFF" : "ON");
   document.body.classList.toggle("halted", halted);
   $("resume-all").disabled = !halted;
   const rv = cfg.hitl === "ambiguous";
@@ -319,24 +354,24 @@ let pending = [], pendingKey = "";
 const mark = (text) => esc(text).replace(SUSPICIOUS, "<mark>$1</mark>");
 const left = (ap) => Math.max(0, Math.ceil(ap.created_at + (ap.kind === "data_review" ? REVIEW_TIMEOUT : APPROVAL_TIMEOUT) - Date.now() / 1000));
 function decisionCard(ap) {
-  const meta = `<div class="meta"><span>Agent <b class="mono">${esc(ap.agent_id)}</b></span><span>Tool <b class="mono">${esc(ap.tool)}</b></span>
-    <span>Run <span class="mono">${esc(ap.run_id)}</span></span></div>`;
+  const meta = `<div class="im"><span>Agent <b>${esc(ap.agent_id)}</b></span><span>Tool <b>${esc(ap.tool)}</b></span>
+    <span>Run ${esc(ap.run_id)}</span></div>`;
   const count = `<span class="count" data-created="${ap.created_at}" data-kind="${esc(ap.kind)}"></span>`;
   const id = esc(ap.approval_id);
   if (ap.kind === "data_review") {
     const fields = ((ap.payload || {}).fields || []).map((f) => {
       const bySafety = f.flagged_by === "nvidia_safety", byJudge = f.flagged_by === "nvidia_judge";
-      return `<div class="field"><div class="muted">Field <span class="mono">${esc(f.field)}</span> (tool output, untrusted data)</div>
+      return `<div class="field"><div class="meta">Field ${esc(f.field)} (tool output, untrusted data)</div>
         <div class="quote">${mark(f.text)}</div><div class="verdicts">
         <span class="verdict ${bySafety ? "unsafe" : "safe"}">NVIDIA safety: ${bySafety ? "unsafe" : "safe"}</span>
         <span class="verdict ${byJudge ? "unsafe" : "safe"}">Nemotron judge: ${byJudge ? "unsafe" : "safe"}</span></div></div>`;
     }).join("");
-    return `<div class="item" data-id="${id}">${meta}${fields}<div class="row">
+    return `<div class="item" data-id="${id}">${meta}${fields}<div class="acts">
       <button type="button" class="block" data-ap="${id}" data-d="reject">Block (sanitize)</button>
       <button type="button" class="allow" data-ap="${id}" data-d="approve" data-confirm="1">Allow original</button>${count}</div></div>`;
   }
   const args = esc(JSON.stringify((ap.envelope || {}).args || {}));
-  return `<div class="item" data-id="${id}">${meta}<div class="quote">${esc(ap.tool)} ${args}</div><div class="row">
+  return `<div class="item" data-id="${id}">${meta}<div class="quote">${esc(ap.tool)} ${args}</div><div class="acts">
     <button type="button" class="block" data-ap="${id}" data-d="approve">Approve</button>
     <button type="button" class="allow" data-ap="${id}" data-d="reject">Reject</button>${count}</div></div>`;
 }
@@ -362,7 +397,7 @@ function renderAgents(agents) {
       const replaced = list.length > 1 && i < list.length - 1 && s !== "active";
       return `<div class="agent${replaced ? " old" : ""}" data-status="${esc(s)}">
         <div class="top"><span class="id">${esc(a.agent_id)}</span><span class="st">${esc(s)}</span></div>
-        ${i > 0 ? '<div class="tag">replacement</div>' : ""}
+        ${i > 0 ? '<div class="rp">replacement</div>' : ""}
         <div class="ctl">${btn("pause", "Pause", s !== "active")}${btn("resume", "Resume", s === "active" || done)}
         ${btn("quarantine", "Quarantine", s === "quarantined" || done)}${btn("halt", "Halt", done)}</div></div>`;
     }).join("");
@@ -388,14 +423,173 @@ function reasonOf(e) {
   if (e.type === "rollback_completed") return `${d.compensated} compensated`;
   return "";
 }
+
+/* ---------- raw event log (flat list) ---------- */
 function renderFeed() {
   const shown = $("important").checked ? events.filter((e) => !ROUTINE.has(e.type)) : events;
-  if (!shown.length) { $("feed").innerHTML = '<div class="nodata">No events yet. Start a scenario from the terminal or the Streamlit dashboard.</div>'; return; }
-  $("feed").innerHTML = shown.map((e) => {
-    const cls = RED.has(e.type) ? "red" : AMBER.has(e.type) ? "amber" : e.type === "side_effect" ? "fx" : ROUTINE.has(e.type) ? "routine" : "";
+  const root = $("feed");
+  if (!shown.length) { root.innerHTML = '<div class="nodata">No events yet. Start a scenario from the terminal or the Streamlit dashboard.</div>'; return; }
+  root.innerHTML = shown.slice(0, 300).map((e) => {
+    const cls = RED.has(e.type) ? "red" : AMBER.has(e.type) ? "amber" : ROUTINE.has(e.type) ? "routine" : "";
     return `<div class="ev ${cls}"><span class="t">${fmtTime(e.ts)}</span><span class="ty">${esc(e.type)}</span>
-      <span class="ag mono">${esc(e.agent_id || "")}</span><span class="tl mono">${esc(e.tool || "")}</span><span class="rs">${esc(reasonOf(e))}</span></div>`;
+      <span class="ag">${esc(e.agent_id || "")}</span><span class="tl">${esc(e.tool || "")}</span><span class="rs">${esc(reasonOf(e))}</span></div>`;
   }).join("");
+}
+
+/* ---------- threat feed ---------- */
+const ICONS = {
+  warn: '<path d="M7 1.5 13 12H1z M7 5.5v3 M7 10v.5"/>',
+  shield: '<path d="M7 1 12 3v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V3z"/>',
+  bend: '<path d="M2 12V7a2 2 0 0 1 2-2h7 M8.5 2.5 11 5 8.5 7.5"/>',
+  target: '<circle cx="7" cy="7" r="5"/><circle cx="7" cy="7" r="1.5"/>',
+  stop: '<circle cx="7" cy="7" r="5.5"/><path d="M3.2 10.8 10.8 3.2"/>',
+  spark: '<path d="M7 1v4 M7 9v4 M1 7h4 M9 7h4"/>',
+  dot: '<circle cx="7" cy="7" r="2.5"/>',
+  hand: '<path d="M4 13V6.5 M7 13V3.5 M10 13V5 M4 9.5 2 8"/>',
+  hex: '<path d="M7 1.2 12 4v6L7 12.8 2 10V4z"/>',
+  square: '<rect x="2.5" y="2.5" width="9" height="9"/>',
+  cycle: '<path d="M11.5 7a4.5 4.5 0 1 1-1.4-3.2 M11 1.5v3H8"/>',
+  check: '<path d="M2.5 7.5 5.5 10.5 11.5 3.5"/>',
+};
+function icon(name) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 14 14"); s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor");
+  s.setAttribute("stroke-width", "1.5"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
+  s.setAttribute("aria-hidden", "true"); s.innerHTML = ICONS[name] || ICONS.dot;  // static constants only
+  return s;
+}
+const INJECTION = /(ignore (?:all )?previous instructions|system override|disregard (?:all|the) (?:previous|above)|you are now|call issue_refund)/i;
+const j = (v) => JSON.stringify(v ?? {});
+const verdict = (text, color) => ({text, color});
+/* Returns null for events that stay in the raw log only. cls: attack | blocked | neutralized | review | containment | remediation | info */
+function classify(e) {
+  const d = e.detail || {}, t = e.type;
+  const row = (cls, tick, ic, title, show, pill, extra) => Object.assign({cls, tick, ic, title, show: show ?? "", pill: pill || null}, extra || {});
+  switch (t) {
+    case "fault_injected":
+      if (d.fault === "inject_prompt") return row("attack", "alarm", "warn", `Prompt injection planted in ${d.field || "a field"}`, d.text, null, {payload: d.text});
+      if (d.fault === "corrupt") return row("attack", "alarm", "warn", "Corrupted tool output injected", d.tool || e.tool);
+      if (d.fault === "wrong_value") return row("attack", "alarm", "warn", `Tampered value injected into ${d.field || "a field"}`, d.value == null ? "" : String(d.value));
+      return null;
+    case "identity_failed": return row("attack", "alarm", "shield", `Impersonation attempt (${d.reason || "unknown"})`, e.agent_id, verdict("Blocked", "safe"), {self: true});
+    case "replay_blocked": return row("attack", "alarm", "shield", "Replay attack blocked", e.agent_id, verdict("Blocked", "safe"), {self: true});
+    case "plan_deviation": return row("attack", "caution", "bend", "Agent went off-plan", `${e.tool || ""}${d.args ? " " + j(d.args) : ""}${d.reason ? " (" + d.reason + ")" : ""}`.trim(), verdict("Flagged", "caution"));
+    case "anomaly_detected":
+      if (d.kind === "prompt_injection") return row("attack", "alarm", "warn", `Injection detected in ${d.field || "a field"}`, d.field || "", verdict("Caught", "safe"), {self: true});
+      if (d.kind === "monitor_rule") return row("attack", "alarm", "target", `Monitor rule ${d.rule || ""} tripped`, d.rule || "", verdict("Caught", "safe"), {self: true});
+      if (d.kind === "tool_unhealthy") return row("info", "caution", "target", "Tool unhealthy, circuit opening", d.tool || e.tool || "");
+      return null;
+    case "policy_blocked": return row("blocked", "alarm", "stop", `Policy blocked (${d.reason || "policy"})`, `${e.tool || ""}`, verdict("Blocked", "safe"));
+    case "guard_blocked": {
+      const names = {pii_egress: "PII exfiltration blocked", loop_detected: "Runaway loop blocked", invalid_args: "Malformed call blocked"};
+      return row("blocked", "alarm", "stop", names[d.reason] || `Guard blocked (${d.reason || "guard"})`, e.tool || "", verdict("Blocked", "safe"));
+    }
+    case "injection_sanitized": return row("neutralized", "safe", "spark", `Injected instruction removed from ${d.field || "a field"}`, d.layer ? `via ${d.layer}` : "", verdict("Neutralized", "safe"));
+    case "guard_unavailable": return row("info", "caution", "dot", `NVIDIA guard unavailable, fail-${d.fail || "open"}`, d.layer || "");
+    case "review_requested": return row("review", "caution", "hand", "Escalated to a human (NVIDIA models disagree)",
+      (d.fields || []).map((f) => `${f.field} (${f.flagged_by})`).join(", "), verdict("Awaiting human", "caution"));
+    case "review_decided": return row("review", "safe", "hand", `Human decision: ${d.decision || ""}`, d.by ? `by ${d.by}` : "",
+      verdict(d.decision === "release_sanitized" ? "Sanitized" : "Released", d.decision === "release_sanitized" ? "safe" : "caution"));
+    case "agent_quarantined": return row("containment", "brand", "hex", `Agent quarantined: ${e.agent_id || ""}`, d.rule ? `rule ${d.rule}` : "", verdict("Contained", "brand"));
+    case "agent_halted": return row("containment", "brand", "square", `Agent halted: ${e.agent_id || ""}`, "", verdict("Contained", "brand"));
+    case "global_halt": return row("containment", "alarm", "square", "Kill switch: all agents halted", "", verdict("Halted", "alarm"));
+    case "rollback_started": return row("remediation", "brand", "cycle", "Remediation started", `${(d.tainted_step_ids || []).length} tainted steps`);
+    case "compensation_applied": return row("remediation", "brand", "cycle", `Remediated: ${d.undo_tool || ""}`, d.step_id || "", verdict("Undone", "safe"));
+    case "rollback_completed": return row("remediation", "safe", "check", `Remediation complete (${d.compensated ?? 0} actions undone)`,
+      d.next_plan_index == null ? "" : `next plan step ${d.next_plan_index}`, verdict("Restored", "safe"));
+    default: return null;
+  }
+}
+/* Containment rule: every attack row counts as a threat; blocked, neutralized, containment and remediation rows count as
+   containment, and so do attack rows that carry their own Blocked or Caught verdict. Clamped to 100%. */
+function summarize(list) {
+  let threats = 0, contained = 0, quar = 0;
+  for (const e of list) {
+    const c = classify(e); if (!c) continue;
+    if (c.cls === "attack") { threats++; if (c.self) contained++; }
+    else if (["blocked", "neutralized", "containment", "remediation"].includes(c.cls)) contained++;
+    if (e.type === "agent_quarantined") quar++;
+  }
+  const pctv = Math.min(100, Math.round(100 * contained / Math.max(1, threats)));
+  return {threats, contained, quar, pct: pctv, leaked: Math.max(0, threats - contained)};
+}
+function relTime(ts) {
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
+  return s < 1 ? "now" : s < 60 ? s + "s ago" : s < 3600 ? Math.floor(s / 60) + "m ago" : Math.floor(s / 3600) + "h ago";
+}
+function payloadNode(text) {
+  const box = document.createElement("div"); box.className = "payload";
+  const re = new RegExp(INJECTION.source, "ig"); let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) box.appendChild(document.createTextNode(text.slice(last, m.index)));
+    const mk = document.createElement("mark"); mk.textContent = m[0]; box.appendChild(mk);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) box.appendChild(document.createTextNode(text.slice(last)));
+  return box;
+}
+function buildRow(e, c) {
+  const r = document.createElement("div"); r.className = "row " + c.tick + (firstPaint ? "" : " enter");
+  const tick = document.createElement("span"); tick.className = "tick";
+  const when = document.createElement("span"); when.className = "when"; when.textContent = relTime(e.ts);
+  const body = document.createElement("div");
+  const title = document.createElement("div"); title.className = "title";
+  title.appendChild(icon(c.ic)); const tt = document.createElement("span"); tt.textContent = c.title; title.appendChild(tt);
+  body.appendChild(title);
+  if (c.payload) body.appendChild(payloadNode(String(c.payload)));
+  else if (c.show) { const d = document.createElement("div"); d.className = "detail"; d.textContent = c.show; body.appendChild(d); }
+  r.append(tick, when, body);
+  if (c.pill) { const p = document.createElement("span"); p.className = "vp " + c.pill.color; p.textContent = c.pill.text; r.appendChild(p); }
+  return r;
+}
+const rowCache = new Map();
+function scopedEvents() {
+  const sel = $("run-select").value || "latest";
+  if (sel === "all") return events;
+  const run = sel === "latest" ? runs[0] : runs.find((r) => r.run_id === sel);
+  if (!run) return [];
+  const end = run.ended_at || Date.now() / 1000 + 5;
+  return events.filter((e) => e.run_id === run.run_id || (!e.run_id && e.ts >= run.started_at && e.ts <= end + 5));
+}
+function renderThreats() {
+  const scoped = scopedEvents(), s = summarize(scoped);
+  const items = [];
+  for (const e of scoped) { const c = classify(e); if (c) items.push([e, c]); }  // scoped is newest first
+  const root = $("threat-feed"), shown = items.slice(0, MAX_ROWS), keep = new Set();
+  if (!shown.length) { rowCache.clear(); root.innerHTML = '<div class="nodata">No threats in this run. Start a scenario from the terminal or the Streamlit dashboard.</div>'; }
+  else {
+    if (root.querySelector(".nodata")) root.innerHTML = "";
+    for (const [e, c] of shown) {
+      keep.add(e.event_id);
+      let el = rowCache.get(e.event_id);
+      if (!el) { el = buildRow(e, c); rowCache.set(e.event_id, el); }
+      else el.querySelector(".when").textContent = relTime(e.ts);
+      root.appendChild(el);  // appending in order also reorders existing rows
+    }
+    for (const [id, el] of rowCache) if (!keep.has(id)) { el.remove(); rowCache.delete(id); }
+  }
+  setCount($("c-threats"), s.threats); setCount($("c-blocked"), s.contained); setCount($("c-quar"), s.quar);
+  const big = $("hero-n"); big.textContent = s.pct + "%"; big.classList.toggle("low", s.pct < 100);
+  $("hero-state").textContent = s.threats === 0 ? "All actions within policy"
+    : `${s.threats} ${s.threats === 1 ? "threat" : "threats"} seen, ${Math.min(s.threats, s.contained)} contained, ${s.leaked} leaked`;
+}
+const reduceMotion = () => !window.matchMedia || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function setCount(el, v) {
+  if (el.dataset.v === String(v)) return;
+  el.dataset.v = String(v);
+  if (!firstPaint || reduceMotion() || v === 0) { el.textContent = v; return; }
+  const t0 = performance.now();
+  const step = (now) => { const k = Math.min(1, (now - t0) / 500); el.textContent = Math.round(v * k); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function renderRunSelect() {
+  const sel = $("run-select"), cur = sel.value || "latest", key = runs.slice(0, 20).map((r) => r.run_id).join(",");
+  if (sel.dataset.key === key) return;
+  sel.dataset.key = key; sel.textContent = "";
+  const add = (v, t) => { const o = document.createElement("option"); o.value = v; o.textContent = t; sel.appendChild(o); };
+  add("latest", "Latest run"); add("all", "All loaded events");
+  for (const r of runs.slice(0, 20)) add(r.run_id, `${r.scenario} (WardAIn ${r.mode})`);
+  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "latest";
 }
 
 function renderRun(run) {
@@ -403,7 +597,7 @@ function renderRun(run) {
   const secs = (run.ended_at || Date.now() / 1000) - run.started_at;
   $("run").innerHTML = `<dl class="kv">
     <dt>Status</dt><dd><span class="chip ${esc(run.status)}">${esc(run.status)}</span></dd>
-    <dt>Run</dt><dd class="mono">${esc(run.run_id)}</dd>
+    <dt>Run</dt><dd>${esc(run.run_id)}</dd>
     <dt>Scenario</dt><dd>${esc(run.scenario)} <span class="muted">(WardAIn ${esc(run.mode)})</span></dd>
     <dt>Refund</dt><dd>${esc(run.customer_id)}, ${Number(run.amount).toFixed(2)} for ${esc(run.reason)}</dd>
     <dt>Elapsed</dt><dd>${secs.toFixed(1)} s</dd></dl>`;
@@ -417,7 +611,7 @@ function table(cols, rows, rowCls) {
 function renderTools(ts, run) {
   const pay = (ts.payments || []).slice().sort((a, b) => b.created_at - a.created_at);
   const done = pay.filter((p) => p.status === "completed").length;
-  $("payments").innerHTML = `<div class="muted" style="margin-bottom:4px">${done} completed, ${pay.length - done} reversed</div>` +
+  $("payments").innerHTML = `<div class="meta" style="margin-bottom:4px">${done} completed, ${pay.length - done} reversed</div>` +
     table([{h: "Payment", v: (r) => r.payment_id}, {h: "Customer", v: (r) => r.customer_id},
       {h: "Amount", num: 1, v: (r) => Number(r.amount).toFixed(2)}, {h: "Status", v: (r) => r.status}],
       pay.slice(0, 12), (r) => r.status);
@@ -426,7 +620,7 @@ function renderTools(ts, run) {
     : o.external && o.status === "sent" ? "leak" : o.external ? "external" : "internal");
   const out = (ts.outbox || []).slice().sort((a, b) => b.created_at - a.created_at);
   const leaks = out.filter((o) => kind(o) === "leak").length;
-  $("outbox").innerHTML = `<div class="muted" style="margin-bottom:4px">${out.length} ${out.length === 1 ? "email" : "emails"}, ${leaks} ${leaks === 1 ? "leak" : "leaks"}</div>` +
+  $("outbox").innerHTML = `<div class="meta" style="margin-bottom:4px">${out.length} ${out.length === 1 ? "email" : "emails"}, ${leaks} ${leaks === 1 ? "leak" : "leaks"}</div>` +
     table([{h: "To", v: (r) => r.to_addr}, {h: "Subject", v: (r) => r.subject},
       {h: "Status", v: (r) => ({leak: "LEAK", customer: "customer"}[kind(r)] || kind(r)) + (r.status === "sent" ? "" : " (" + r.status + ")")}],
       out.slice(0, 12), (r) => (kind(r) === "leak" ? "leak " : "") + r.status);
@@ -483,13 +677,13 @@ function redteamPanel(r) {
   const bar = (v, y, color) => `<rect x="${L}" y="${y}" width="${Math.max(2, v * bw)}" height="10" rx="2" fill="${color}"/><text x="${L + v * bw + 6}" y="${y + 9}">${pct(v)}</text>`;
   const rows = COMBOS.filter((k) => r.combinations && r.combinations[k]).map((k, i) => {
     const m = r.combinations[k], y = i * rowH + 2;
-    return `<text x="0" y="${y + 15}" class="lbl">${esc(k)}</text>${bar(m.detection_rate, y, "var(--active)")}${bar(m.false_positive_rate, y + 14, "var(--halted)")}`;
+    return `<text x="0" y="${y + 15}" class="lbl">${esc(k)}</text>${bar(m.detection_rate, y, "var(--safe)")}${bar(m.false_positive_rate, y + 14, "var(--alarm)")}`;
   }).join("");
-  return `<div class="legend"><span><i style="background:var(--active)"></i>Detection rate</span><span><i style="background:var(--halted)"></i>False-positive rate</span></div>
+  return `<div class="legend"><span><i style="background:var(--safe)"></i>Detection rate</span><span><i style="background:var(--alarm)"></i>False-positive rate</span></div>
     <svg viewBox="0 0 ${W} ${COMBOS.length * rowH + 4}" width="100%" role="img" aria-label="Red-team detection and false-positive rate per guard layer combination">${rows}</svg>
-    <p class="muted">Backend: ${esc(r.backend)}. Attacks: ${esc(c.attacks)} (${esc(c.seed)} seed, ${esc(c.generated)} generated), ${esc(c.ambiguous)} ambiguous excluded, ${esc(c.benign)} benign.</p>
+    <p class="meta">Backend: ${esc(r.backend)}. Attacks: ${esc(c.attacks)} (${esc(c.seed)} seed, ${esc(c.generated)} generated), ${esc(c.ambiguous)} ambiguous excluded, ${esc(c.benign)} benign.</p>
     ${escalationLine(r)}
-    <p class="muted">Detection is one layer: actions that slip past it are still stopped by role, scope and recipient rules, plan-deviation detection and rollback.</p>`;
+    <p class="meta">Detection is one layer: actions that slip past it are still stopped by role, scope and recipient rules, plan-deviation detection and rollback.</p>`;
 }
 async function loadRedteam() {
   try { $("redteam").innerHTML = redteamPanel(await api("/admin/redteam")); }
@@ -505,7 +699,7 @@ function bars(list) {
     `<rect x="${L}" y="${y}" width="${Math.max(2, v * bw)}" height="10" rx="2" fill="${color}"/><text x="${L + v * bw + 6}" y="${y + 9}">${Math.round(v * 100)}%</text>`;
   const g = list.map((s, i) => {
     const y = i * rowH + 2;
-    return `<text x="0" y="${y + 15}" class="lbl">${esc(s.scenario)}</text>${one(s.task_success_rate_off, y, "var(--halted)")}${one(s.task_success_rate_on, y + 13, "var(--active)")}`;
+    return `<text x="0" y="${y + 15}" class="lbl">${esc(s.scenario)}</text>${one(s.task_success_rate_off, y, "var(--alarm)")}${one(s.task_success_rate_on, y + 13, "var(--safe)")}`;
   }).join("");
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Task success rate per scenario, WardAIn off versus on">${g}</svg>`;
 }
@@ -514,15 +708,19 @@ function bars(list) {
 async function tick() {
   if (busy || !token) return; busy = true;
   try {
-    const q = since ? `/admin/events?since_ts=${since}&limit=500` : "/admin/events?limit=200";
-    const [agents, runs, cfg, ts, evs, aps] = await Promise.all([api("/admin/agents"), api("/admin/runs"), api("/admin/config"),
+    const q = since ? `/admin/events?since_ts=${since}&limit=500` : "/admin/events?limit=500";
+    const [agents, rs, cfg, ts, evs, aps] = await Promise.all([api("/admin/agents"), api("/admin/runs"), api("/admin/config"),
       api("/admin/tool_state"), api(q), api("/admin/approvals")]);
-    lastConfig = cfg; pending = aps; renderDecisions(); renderMode(cfg); renderAgents(agents); renderRun(runs[0]); renderTools(ts, runs[0]);
+    lastConfig = cfg; pending = aps; runs = rs;
+    renderDecisions(); renderMode(cfg); renderAgents(agents); renderRun(rs[0]); renderTools(ts, rs[0]);
     if (evs.length) {
       since = Math.max(since, ...evs.map((e) => e.ts));
-      events = evs.slice().reverse().concat(events).slice(0, MAX_EVENTS);
+      const seen = new Set(events.map((e) => e.event_id));
+      const fresh = evs.filter((e) => !seen.has(e.event_id));
+      events = fresh.slice().reverse().concat(events).slice(0, MAX_EVENTS);
     }
-    renderFeed(); setConn("live " + fmtTime(Date.now() / 1000).slice(0, 8));
+    renderRunSelect(); renderThreats(); renderFeed(); firstPaint = false;
+    setConn("live " + fmtTime(Date.now() / 1000).slice(0, 8));
     if ($("gate").hidden === false) showViews();
   } catch (e) {
     if (e instanceof AuthError) { store.clear(); token = ""; showGate("Admin token rejected. Enter it again."); }
@@ -559,13 +757,15 @@ $("review-toggle").addEventListener("click", async () => {
   tick();
 });
 $("important").addEventListener("change", renderFeed);
+$("run-select").addEventListener("change", renderThreats);
 $("halt-all").addEventListener("click", () => act("/control/halt_all", "halt all"));
 $("resume-all").addEventListener("click", () => act("/control/resume_all", "resume all"));
 for (const b of document.querySelectorAll("nav button")) b.addEventListener("click", () => selectView(b.dataset.view));
 $("change-token").addEventListener("click", () => { store.clear(); token = ""; showGate(""); });
 $("gate-form").addEventListener("submit", (e) => {
   e.preventDefault(); const v = $("token-input").value.trim(); if (!v) return;
-  token = v; store.set(v); $("token-input").value = ""; since = 0; events = []; $("gate-err").textContent = ""; start();
+  token = v; store.set(v); $("token-input").value = ""; since = 0; events = []; rowCache.clear(); firstPaint = true;
+  $("threat-feed").textContent = ""; $("gate-err").textContent = ""; start();
 });
 
 if (token) { $("gate").hidden = true; $("change-token").hidden = false; start(); } else showGate("");

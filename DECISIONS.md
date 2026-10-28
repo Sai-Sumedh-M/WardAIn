@@ -46,3 +46,5 @@
 - gateway/store.py: approvals gets columns kind (default 'action') and payload_json; existing databases are migrated with ALTER TABLE on startup
 - dashboard.html: red-team escalation line is computed client-side from the per-item verdicts in /admin/redteam (no new endpoint); countdown uses the browser clock against the server created_at
 - docs: README and docs/how-it-works.md cover Phase 7 and 8 with numbers copied from the committed reports
+- gateway/static/dashboard.html: Containment % counts every ATTACK row as a threat; blocked, neutralized, containment and remediation rows count as contained, and so do attack rows that carry their own Blocked/Caught verdict; result clamped to 100 (a literal reading gave ON prompt_injection 50%, contradicting 27.8). Feed scope defaults to the latest run.
+- gateway/static/dashboard.html: plan_deviation event detail has no args, so the feed shows tool and reason.

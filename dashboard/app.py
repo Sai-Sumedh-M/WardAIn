@@ -22,6 +22,23 @@ STOP_PREFIXES = ("identity_failed", "replay_blocked", "policy_blocked", "guard_b
 WARN_PREFIXES = ("anomaly_detected", "agent_quarantined", "rollback_", "compensation_applied")
 
 
+STYLE = """<style>
+html, body, [class*="css"], .stApp { font-family: "Avenir Next","Avenir","Segoe UI",system-ui,sans-serif;
+  font-feature-settings: "tnum" 1; }
+#MainMenu, footer, header [data-testid="stToolbar"], [data-testid="stDeployButton"], .stDeployButton,
+[data-testid="stDecoration"] { display: none !important; visibility: hidden; }
+header[data-testid="stHeader"] { background: #222a31; border-bottom: 1px solid #323d47; }
+h1, h2, h3 { font-weight: 600 !important; letter-spacing: 0; }
+[data-testid="stMetric"] { background: none; border: 0; border-left: 1px solid #323d47; padding: 4px 0 4px 16px; }
+[data-testid="stMetricLabel"] { color: #93a0ac; font-size: 12.5px; font-weight: 500; }
+[data-testid="stMetricValue"] { font-size: 30px; font-weight: 600; line-height: 1.1; }
+[data-testid="stHorizontalBlock"] > div:first-child [data-testid="stMetric"] { border-left: 0; padding-left: 0; }
+table { border-collapse: collapse; } th, td { border-bottom: 1px solid #323d47 !important; border-top: 0 !important; }
+.stButton button { border-radius: 3px; border: 1px solid #323d47; background: none; font-weight: 500; }
+.stButton button:hover { background: #222a31; border-color: #7e9cb8; }
+</style>"""
+
+
 def get_admin() -> AdminClient:
     """Build an AdminClient from settings."""
     return AdminClient(SETTINGS.GATEWAY_URL, SETTINGS.ADMIN_TOKEN)
@@ -131,16 +148,39 @@ def page_run() -> None:
         st.code(proc.stdout + proc.stderr)
 
 
+def metric_row(data: dict) -> None:
+    """Headline OFF-vs-ON results as st.metric with deltas (ON value, delta vs OFF)."""
+    by = {m["metric"]: m for m in data.get("metrics", [])}
+
+    def tile(col, label: str, key: str, rate: bool = False) -> None:
+        m = by.get(key)
+        if not m or m.get("on") is None:
+            return
+        fmt = (lambda v: f"{round(v * 100)}%") if rate else (lambda v: f"{v:g}")
+        off = m.get("off")
+        delta = None if off is None else f"{fmt(off)} off"
+        col.metric(label, fmt(m["on"]), delta, delta_color="off")
+
+    cols = st.columns(5)
+    tile(cols[0], "Residual damage after recovery", "residual_bad_side_effects")
+    tile(cols[1], "Remediation fidelity", "rollback_fidelity", rate=True)
+    tile(cols[2], "Payments leaked after halt", "post_kill_leakage")
+    tile(cols[3], "Impersonation blocked", "impersonation_block_rate", rate=True)
+    tile(cols[4], "Replays blocked", "replay_block_rate", rate=True)
+
+
 def page_scorecard() -> None:
-    """Scorecard page: markdown table plus OFF vs ON success chart."""
+    """Scorecard page: headline metrics, markdown table plus OFF vs ON success chart."""
     st.title("Resilience Scorecard")
     md, js = RESULTS / "scorecard.md", RESULTS / "scorecard.json"
     if not md.exists():
         st.info("No scorecard yet. Run: python -m scenarios.runner --scenario all --mode both")
         return
-    st.markdown(md.read_text())
     if js.exists():
         data = json.loads(js.read_text())
+        metric_row(data)
+    st.markdown(md.read_text())
+    if js.exists():
         rows = {s["scenario"]: {"OFF": s.get("task_success_rate_off"), "ON": s.get("task_success_rate_on")}
                 for s in data.get("scenarios", [])}
         if rows:
@@ -150,6 +190,7 @@ def page_scorecard() -> None:
 def main() -> None:
     """Dashboard entry point."""
     st.set_page_config(page_title="WardAIn", layout="wide")
+    st.markdown(STYLE, unsafe_allow_html=True)
     page = st.sidebar.radio("Page", ["Live", "Run scenario", "Scorecard"])
     {"Live": page_live, "Run scenario": page_run, "Scorecard": page_scorecard}[page]()
 

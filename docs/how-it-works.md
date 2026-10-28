@@ -192,3 +192,7 @@ Streamlit app over the admin API: live agent status and controls, event stream, 
 a scenario launcher and the scorecard. File: `dashboard/app.py`.
 
 **Q: Can I stop things from the UI?** Yes, per-agent Pause/Resume/Quarantine/Halt and HALT ALL.
+
+## Threat feed and console (Phase 10)
+
+The console at `/ui` has a Threat feed that classifies events into attack, blocked, neutralized, review, containment and remediation rows (see CLAUDE.md section 27.4). `fault_injected` events carry the injected text so the feed can show exactly what was planted; the payload is rendered with text nodes only.

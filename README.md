@@ -288,3 +288,4 @@ Honest reading: with WardAIn OFF, a compliant agent did real damage in 25 of 41 
 **Q: Isn't the executor prompt rigged?** It is deliberately compliant, and the report says so: we test the gateway, not the model's own resistance. Caveats: one run per attack and mode, one model, 41 attacks.
 
 **Q: Can an agent read another agent's approval result?** No. `GET /approvals/{id}` returns 403 `not_owner` unless the bearer token belongs to the agent that requested the approval.
+- Phase 10: the console (gateway/static/dashboard.html) shows a live Threat feed ledger and containment readout; the Streamlit scorecard uses the same identity (.streamlit/config.toml).
